@@ -188,7 +188,7 @@ class _DriverQrisCard extends StatelessWidget {
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
     try {
-      await Api.multipart('driver/qris', files: {'qris': f.path});
+      await Api.multipart('driver/qris', fields: const {}, files: {'qris': f.path});
       if (context.mounted) {
         await context.read<AuthProvider>().refreshUser();
         Navigator.of(context, rootNavigator: true).pop();

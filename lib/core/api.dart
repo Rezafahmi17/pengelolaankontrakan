@@ -57,7 +57,7 @@ class Api {
 
   static Future<Map<String, dynamic>> multipart(
     String path, {
-    required Map<String, String> fields,
+    Map<String, String> fields = const {},
     Map<String, String> files = const {},
   }) =>
       _send(() async {
