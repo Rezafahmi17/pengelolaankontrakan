@@ -22,6 +22,7 @@ $routes = [
     ['POST', 'profile/update', 'h_update_profile'],
     ['POST', 'profile/password', 'h_change_password'],
     ['GET',  'avatars/{file}', 'h_avatar'],
+    ['GET',  'uploads/{folder}/{file}', 'h_serve_file'],
     ['GET',  'notifications', 'h_notifications'],
     ['POST', 'notifications/read', 'h_notifications_read'],
     ['POST', 'complaints', 'h_complaint_create'],
@@ -45,6 +46,9 @@ $routes = [
     ['POST', 'orders/{id}/advance', 'h_order_advance'],
     ['POST', 'orders/{id}/payment', 'h_order_confirm_payment'],
     ['POST', 'orders/{id}/driver-cancel', 'h_order_driver_cancel'],
+    ['POST', 'driver/qris', 'h_driver_upload_qris'],
+    ['POST', 'driver/fee-payments', 'h_driver_fee_payment_create'],
+    ['GET',  'driver/fee-payments', 'h_driver_fee_payments_mine'],
     // admin
     ['GET',  'admin/dashboard', 'h_admin_dashboard'],
     ['GET',  'admin/users', 'h_admin_users'],
@@ -67,6 +71,9 @@ $routes = [
     ['GET',  'admin/settings', 'h_admin_settings_get'],
     ['POST', 'admin/tariff', 'h_admin_tariff_update'],
     ['POST', 'admin/settings', 'h_admin_setting_update'],
+    ['GET',  'admin/fee-payments', 'h_admin_fee_payments'],
+    ['POST', 'admin/fee-payments/{id}/verify', 'h_admin_fee_payment_verify'],
+    ['POST', 'admin/qris', 'h_admin_update_qris_and_fee'],
     ['GET',  'admin/logs', 'h_admin_logs'],
 ];
 

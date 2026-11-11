@@ -111,6 +111,7 @@ class CustomerController extends ChangeNotifier {
     required LatLng dest,
     required double distanceKm,
     required int durationMin,
+    String paymentMethod = 'cash',
   }) async {
     final r = await Api.post('orders', body: {
       'pickup_address': pickupAddress,
@@ -121,6 +122,7 @@ class CustomerController extends ChangeNotifier {
       'dest_lng': dest.longitude,
       'distance_km': distanceKm,
       'duration_min': durationMin,
+      'payment_method': paymentMethod,
     });
     final o = Order.fromJson(r['order']);
     _trackedId = o.id;

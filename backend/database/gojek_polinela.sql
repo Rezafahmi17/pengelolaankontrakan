@@ -45,6 +45,7 @@ CREATE TABLE driver_profiles (
   last_online_at DATETIME NULL,
   rating_avg DECIMAL(3,2) NOT NULL DEFAULT 0,
   rating_count INT NOT NULL DEFAULT 0,
+  qris_url VARCHAR(255) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL,
@@ -251,6 +252,25 @@ CREATE TABLE complaints (
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+-- 15. driver_fee_payments: setoran biaya driver ke super admin ---
+CREATE TABLE driver_fee_payments (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  driver_id INT UNSIGNED NOT NULL,
+  amount INT NOT NULL,
+  proof_image VARCHAR(255) NULL,
+  notes VARCHAR(255) NULL,
+  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  admin_note VARCHAR(255) NULL,
+  verified_by INT UNSIGNED NULL,
+  verified_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (driver_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_fee_status (status),
+  INDEX idx_fee_driver (driver_id)
+) ENGINE=InnoDB;
+
 -- ============================================================
 --  DATA AWAL (SEED)  — semua akun demo memakai password: password123
 -- ============================================================
@@ -260,6 +280,8 @@ INSERT INTO system_settings (setting_key, setting_value, description) VALUES
  ('penalty_points_per_violation', '1', 'Poin pelanggaran untuk setiap pembatalan tanpa alasan yang diterima'),
  ('penalty_block_threshold', '3', 'Akun driver diblokir otomatis saat poin mencapai nilai ini'),
  ('order_search_timeout_sec', '120', 'Lama pencarian driver sebelum pesanan berstatus Tidak Mendapat Driver'),
+ ('withdrawal_fee', '1000', 'Biaya potongan penarikan driver ke super admin per transaksi'),
+ ('admin_qris_url', '', 'URL gambar QRIS Super Admin untuk pembayaran biaya driver'),
  ('inactive_driver_days', '30', 'Driver dianggap tidak aktif jika tidak online selama N hari');
 
 INSERT INTO users (id, role, name, npm, email, phone, password_hash) VALUES

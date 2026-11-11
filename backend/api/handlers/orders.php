@@ -41,14 +41,17 @@ function h_order_create(): void {
     $t = tariff();
     $fare = calc_fare($km, $t);
     $timeout = (int) setting('order_search_timeout_sec', '120');
+    $method = in('payment_method', 'cash');
+    if (!in_array($method, ['cash', 'qris'], true)) $method = 'cash';
+
     q("INSERT INTO orders (order_code, customer_id, pickup_address, pickup_lat, pickup_lng, dest_address, dest_lat, dest_lng,
-                           distance_km, duration_min, base_fare, per_km_rate, total_fare, status, search_expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'waiting', DATE_ADD(NOW(), INTERVAL ? SECOND))",
+                           distance_km, duration_min, base_fare, per_km_rate, total_fare, payment_method, status, search_expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'waiting', DATE_ADD(NOW(), INTERVAL ? SECOND))",
         [make_order_code(), $u['id'], mb_substr($d['pickup_address'], 0, 250), $d['pickup_lat'], $d['pickup_lng'],
          mb_substr($d['dest_address'], 0, 250), $d['dest_lat'], $d['dest_lng'], $km, (int) in('duration_min', 0),
-         $t['base_fare'], $t['per_km_rate'], $fare, $timeout]);
+         $t['base_fare'], $t['per_km_rate'], $fare, $method, $timeout]);
     $id = insert_id();
-    q('INSERT INTO payments (order_id, amount, method, status) VALUES (?,?,?,?)', [$id, $fare, 'cash', 'pending']);
+    q('INSERT INTO payments (order_id, amount, method, status) VALUES (?,?,?,?)', [$id, $fare, $method, 'pending']);
     order_history($id, 'waiting', 'Pesanan dibuat, mencari driver', (int) $u['id']);
 
     // Distribusi ke seluruh driver online, terverifikasi & tidak sibuk
@@ -166,7 +169,7 @@ function h_driver_incoming(): void {
     if (!$dp['is_online'] || $dp['is_busy'] || $dp['verification_status'] !== 'approved' || $u['status'] !== 'active') ok(['orders' => []]);
     $loc = row('SELECT lat, lng FROM driver_locations WHERE driver_id = ?', [$u['id']]);
     $list = rows("SELECT o.id, o.order_code, o.pickup_address, o.pickup_lat, o.pickup_lng, o.dest_address, o.dest_lat, o.dest_lng,
-                         o.distance_km, o.duration_min, o.total_fare, c.name AS customer_name,
+                         o.distance_km, o.duration_min, o.total_fare, o.payment_method, c.name AS customer_name,
                          GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), o.search_expires_at)) AS seconds_left
                   FROM orders o JOIN users c ON c.id = o.customer_id
                   WHERE o.status = 'waiting' AND o.driver_id IS NULL AND (o.search_expires_at IS NULL OR o.search_expires_at > NOW())

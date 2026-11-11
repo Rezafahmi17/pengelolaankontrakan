@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../widgets/common.dart';
 import '../../widgets/profile_view.dart';
+import 'admin_fee_payments_screen.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   final void Function(int tabIndex)? onNavigate;
@@ -107,7 +108,22 @@ class AdminDashboardScreen extends StatelessWidget {
                       style: const TextStyle(color: Colors.white70, fontSize: 13)),
                 ]),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+
+              Card(
+                color: AppColors.primaryLight,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: AppColors.primary)),
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: AppColors.primary,
+                    child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 22),
+                  ),
+                  title: const Text('Monitoring Setoran Driver (QRIS)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                  subtitle: const Text('Pantau dan verifikasi pembayaran setoran biaya aplikasi dari driver.'),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.primaryDark),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFeePaymentsScreen())),
+                ),
+              ),
 
               if (pendingVerif > 0)
                 Card(

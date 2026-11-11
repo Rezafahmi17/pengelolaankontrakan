@@ -15,6 +15,8 @@ function h_public_config(): void {
             'block_threshold' => (int) setting('penalty_block_threshold', '3'),
             'points_per_violation' => (int) setting('penalty_points_per_violation', '1'),
         ],
+        'withdrawal_fee' => (int) setting('withdrawal_fee', '1000'),
+        'admin_qris_url' => setting('admin_qris_url', ''),
         'search_timeout_sec' => (int) setting('order_search_timeout_sec', '120'),
     ]);
 }
@@ -100,11 +102,92 @@ function h_update_profile(): void {
     $avatarUrl = $avatar ? $avatar['path'] : ($u['avatar_url'] ?? null);
 
     q('UPDATE users SET name = ?, phone = ?, avatar_url = ? WHERE id = ?', [$name, $phone, $avatarUrl, $u['id']]);
-    if ($u['role'] === 'driver' && (in('plate_number') || in('vehicle_model'))) {
-        q('UPDATE vehicles SET brand_model = ?, plate_number = ?, color = ? WHERE driver_id = ?',
-            [trim((string) in('vehicle_model', '')), strtoupper(trim((string) in('plate_number', ''))), in('vehicle_color'), $u['id']]);
+    if ($u['role'] === 'driver') {
+        $qris = save_upload('qris', 'qris', ['jpg', 'jpeg', 'png', 'webp']);
+        if ($qris) {
+            q('UPDATE driver_profiles SET qris_url = ? WHERE user_id = ?', [$qris['path'], $u['id']]);
+        }
+        if (in('plate_number') || in('vehicle_model')) {
+            q('UPDATE vehicles SET brand_model = ?, plate_number = ?, color = ? WHERE driver_id = ?',
+                [trim((string) in('vehicle_model', '')), strtoupper(trim((string) in('plate_number', ''))), in('vehicle_color'), $u['id']]);
+        }
     }
     ok(['user' => user_public(row('SELECT * FROM users WHERE id = ?', [$u['id']]))], 'Profil diperbarui');
+}
+
+function h_driver_upload_qris(): void {
+    $u = require_role('driver');
+    $qris = save_upload('qris', 'qris', ['jpg', 'jpeg', 'png', 'webp']);
+    if (!$qris) throw new ApiException('Foto QRIS wajib diunggah', 422);
+    q('UPDATE driver_profiles SET qris_url = ? WHERE user_id = ?', [$qris['path'], $u['id']]);
+    ok(['user' => user_public(row('SELECT * FROM users WHERE id = ?', [$u['id']]))], 'QRIS driver berhasil diperbarui');
+}
+
+function h_driver_fee_payment_create(): void {
+    $u = require_role('driver');
+    $amount = (int) in('amount', 0);
+    if ($amount <= 0) throw new ApiException('Nominal pembayaran tidak valid', 422);
+    $proof = save_upload('proof', 'payments', ['jpg', 'jpeg', 'png', 'webp']);
+    if (!$proof) throw new ApiException('Bukti pembayaran (screenshot/foto) wajib diunggah', 422);
+    $notes = trim((string) in('notes', ''));
+
+    q('INSERT INTO driver_fee_payments (driver_id, amount, proof_image, notes, status) VALUES (?,?,?,?,?)',
+        [$u['id'], $amount, $proof['path'], $notes, 'pending']);
+    $id = insert_id();
+
+    foreach (rows("SELECT id FROM users WHERE role IN ('admin','super_admin') AND status = 'active'") as $a)
+        notify((int) $a['id'], 'Setoran Biaya Driver Baru', $u['name'] . ' mengirim pembayaran biaya sebesar Rp ' . number_format($amount, 0, ',', '.') . '.', 'payment', $id);
+
+    ok(['id' => $id], 'Bukti pembayaran berhasil dikirim. Menunggu verifikasi Super Admin.');
+}
+
+function h_driver_fee_payments_mine(): void {
+    $u = require_role('driver');
+    $list = rows('SELECT * FROM driver_fee_payments WHERE driver_id = ? ORDER BY id DESC LIMIT 50', [$u['id']]);
+    $fee = (int) setting('withdrawal_fee', '1000');
+    $adminQris = setting('admin_qris_url', '');
+    $completedCount = (int) scalar("SELECT COUNT(*) FROM orders WHERE driver_id = ? AND status = 'completed'", [$u['id']]);
+    $totalPaid = (int) scalar("SELECT COALESCE(SUM(amount), 0) FROM driver_fee_payments WHERE driver_id = ? AND status = 'approved'", [$u['id']]);
+    $totalPending = (int) scalar("SELECT COALESCE(SUM(amount), 0) FROM driver_fee_payments WHERE driver_id = ? AND status = 'pending'", [$u['id']]);
+
+    ok([
+        'fee_per_order' => $fee,
+        'admin_qris_url' => $adminQris,
+        'completed_orders' => $completedCount,
+        'total_fee_obligation' => $completedCount * $fee,
+        'total_paid' => $totalPaid,
+        'total_pending' => $totalPending,
+        'payments' => array_map(function($r) {
+            $r['id'] = (int) $r['id'];
+            $r['amount'] = (int) $r['amount'];
+            return $r;
+        }, $list),
+    ]);
+}
+
+function h_serve_file(array $p): void {
+    $folder = basename($p['folder'] ?? '');
+    $file = basename($p['file'] ?? '');
+    if (!in_array($folder, ['avatars', 'qris', 'payments', 'docs'], true)) {
+        throw new ApiException('Folder tidak diizinkan', 403);
+    }
+    $path = realpath(__DIR__ . '/../uploads/' . $folder . '/' . $file);
+    $root = realpath(__DIR__ . '/../uploads/' . $folder);
+    if (!$path || !$root || strpos($path, $root) !== 0 || !is_file($path)) {
+        throw new ApiException('File tidak ditemukan', 404);
+    }
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $mime = match($ext) {
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        'pdf' => 'application/pdf',
+        default => 'image/jpeg',
+    };
+    header("Content-Type: $mime");
+    header('Content-Length: ' . filesize($path));
+    header('Cache-Control: public, max-age=86400');
+    readfile($path);
+    exit;
 }
 
 function h_avatar(array $p): void {

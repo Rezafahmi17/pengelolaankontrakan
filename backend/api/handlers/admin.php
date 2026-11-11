@@ -343,7 +343,7 @@ function h_admin_tariff_update(): void {
 function h_admin_setting_update(): void {
     $a = super_only();
     $d = need('key', 'value');
-    $allowed = ['penalty_points_per_violation', 'penalty_block_threshold', 'order_search_timeout_sec', 'inactive_driver_days'];
+    $allowed = ['penalty_points_per_violation', 'penalty_block_threshold', 'order_search_timeout_sec', 'inactive_driver_days', 'withdrawal_fee'];
     if (!in_array($d['key'], $allowed, true)) throw new ApiException('Pengaturan tidak dikenal', 422);
     if (!ctype_digit((string) $d['value']) || (int) $d['value'] < 1) throw new ApiException('Nilai harus berupa angka positif', 422);
     q('UPDATE system_settings SET setting_value = ? WHERE setting_key = ?', [(string) $d['value'], $d['key']]);
@@ -355,4 +355,84 @@ function h_admin_logs(): void {
     super_only();
     ok(['logs' => rows("SELECT l.id, l.action, l.target_type, l.target_id, l.details, l.created_at, COALESCE(u.name, 'Sistem') AS admin_name
                         FROM admin_logs l LEFT JOIN users u ON u.id = l.admin_id ORDER BY l.id DESC LIMIT 150")]);
+}
+
+function h_admin_fee_payments(): void {
+    admin_only();
+    $status = in('status');
+    $sql = "SELECT p.*, u.name AS driver_name, u.npm AS driver_npm, u.phone AS driver_phone,
+                   v.brand_model, v.plate_number, a.name AS verified_by_name
+            FROM driver_fee_payments p
+            JOIN users u ON u.id = p.driver_id
+            LEFT JOIN vehicles v ON v.driver_id = u.id
+            LEFT JOIN users a ON a.id = p.verified_by";
+    $params = [];
+    if ($status && in_array($status, ['pending', 'approved', 'rejected'], true)) {
+        $sql .= " WHERE p.status = ?";
+        $params[] = $status;
+    }
+    $sql .= " ORDER BY p.id DESC LIMIT 100";
+    $list = rows($sql, $params);
+
+    $summary = [
+        'total_collected' => (int) scalar("SELECT COALESCE(SUM(amount), 0) FROM driver_fee_payments WHERE status = 'approved'"),
+        'pending_count' => (int) scalar("SELECT COUNT(*) FROM driver_fee_payments WHERE status = 'pending'"),
+        'pending_amount' => (int) scalar("SELECT COALESCE(SUM(amount), 0) FROM driver_fee_payments WHERE status = 'pending'"),
+        'withdrawal_fee' => (int) setting('withdrawal_fee', '1000'),
+        'admin_qris_url' => setting('admin_qris_url', ''),
+    ];
+
+    ok([
+        'summary' => $summary,
+        'payments' => array_map(function($r) {
+            $r['id'] = (int) $r['id'];
+            $r['amount'] = (int) $r['amount'];
+            return $r;
+        }, $list),
+    ]);
+}
+
+function h_admin_fee_payment_verify(array $params): void {
+    admin_only();
+    $admin = current_user();
+    $id = (int) $params['id'];
+    $p = row('SELECT * FROM driver_fee_payments WHERE id = ?', [$id]);
+    if (!$p) throw new ApiException('Data pembayaran tidak ditemukan', 404);
+
+    $action = in('action'); // 'approve' | 'reject'
+    $adminNote = trim((string) in('admin_note', ''));
+    if (!in_array($action, ['approve', 'reject'], true)) throw new ApiException('Aksi tidak valid (approve/reject)', 422);
+
+    $status = $action === 'approve' ? 'approved' : 'rejected';
+    q('UPDATE driver_fee_payments SET status = ?, admin_note = ?, verified_by = ?, verified_at = NOW() WHERE id = ?',
+        [$status, $adminNote, $admin['id'], $id]);
+
+    $title = $status === 'approved' ? 'Pembayaran Biaya Disetujui' : 'Pembayaran Biaya Ditolak';
+    $msg = $status === 'approved'
+        ? 'Pembayaran biaya penarikan sebesar Rp ' . number_format($p['amount'], 0, ',', '.') . ' telah disetujui Super Admin.'
+        : 'Pembayaran biaya penarikan ditolak: ' . ($adminNote ?: 'Bukti tidak sesuai');
+    notify((int) $p['driver_id'], $title, $msg, 'payment', $id);
+
+    admin_log((int) $admin['id'], 'verify_fee_payment', 'driver_fee_payments', $id, "Status: $status, Driver ID: {$p['driver_id']}");
+    ok([], $status === 'approved' ? 'Pembayaran berhasil disetujui' : 'Pembayaran berhasil ditolak');
+}
+
+function h_admin_update_qris_and_fee(): void {
+    super_only();
+    $fee = in('withdrawal_fee');
+    if ($fee !== null && is_numeric($fee)) {
+        q("INSERT INTO system_settings (setting_key, setting_value, description)
+           VALUES ('withdrawal_fee', ?, 'Biaya potongan penarikan driver ke super admin')
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)", [(string) (int) $fee]);
+    }
+    $qris = save_upload('qris', 'qris', ['jpg', 'jpeg', 'png', 'webp']);
+    if ($qris) {
+        q("INSERT INTO system_settings (setting_key, setting_value, description)
+           VALUES ('admin_qris_url', ?, 'URL gambar QRIS Super Admin')
+           ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)", [$qris['path']]);
+    }
+    ok([
+        'withdrawal_fee' => (int) setting('withdrawal_fee', '1000'),
+        'admin_qris_url' => setting('admin_qris_url', ''),
+    ], 'Pengaturan QRIS & biaya penarikan berhasil disimpan');
 }

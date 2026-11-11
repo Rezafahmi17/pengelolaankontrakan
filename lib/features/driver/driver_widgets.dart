@@ -150,7 +150,23 @@ class _IncomingSheetState extends State<_IncomingSheet> {
             Expanded(child: _stat('Pendapatan', Fmt.rupiah(o.totalFare), highlight: true)),
           ]),
           const SizedBox(height: 4),
-          const Center(child: Text('Pembayaran tunai', style: TextStyle(color: AppColors.grey, fontSize: 12))),
+          Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(o.isQris ? Icons.qr_code_2_rounded : Icons.payments_outlined, size: 15, color: o.isQris ? AppColors.primary : AppColors.grey),
+                const SizedBox(width: 4),
+                Text(
+                  o.isQris ? 'Metode: QRIS Driver' : 'Pembayaran tunai',
+                  style: TextStyle(
+                    color: o.isQris ? AppColors.primaryDark : AppColors.grey,
+                    fontSize: 12,
+                    fontWeight: o.isQris ? FontWeight.w700 : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 14),
           Row(children: [
             Expanded(
@@ -214,25 +230,36 @@ class DriverOrderCard extends StatelessWidget {
 
     if (o.isCompleted && !o.isPaid) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.payments_rounded, size: 46, color: AppColors.success),
+        Icon(o.isQris ? Icons.qr_code_2_rounded : Icons.payments_rounded, size: 46, color: AppColors.success),
         const SizedBox(height: 8),
-        const Text('Terima pembayaran tunai', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        Text(
+          o.isQris ? 'Periksa Penerimaan QRIS' : 'Terima pembayaran tunai',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(16)),
           child: Column(children: [
             Text(Fmt.rupiah(o.totalFare), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.primaryDark)),
-            Text('dari ${o.customerName} • ${o.code}', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12.5)),
+            Text(
+              o.isQris
+                  ? 'Pastikan customer sudah scan barcode QRIS Anda • ${o.code}'
+                  : 'dari ${o.customerName} • ${o.code}',
+              style: const TextStyle(color: AppColors.primaryDark, fontSize: 12.5),
+            ),
           ]),
         ),
         const SizedBox(height: 14),
         LoadingButton(
-          label: 'Konfirmasi Pembayaran Diterima',
+          label: o.isQris ? 'Konfirmasi QRIS Diterima' : 'Konfirmasi Pembayaran Diterima',
           icon: Icons.check_circle_rounded,
           onPressed: () => _run(context, () async {
             await ctrl.confirmPayment();
-            if (context.mounted) showMsg(context, 'Pembayaran tunai dikonfirmasi. Terima kasih!');
+            if (context.mounted) {
+              showMsg(context, o.isQris ? 'Pembayaran QRIS dikonfirmasi. Terima kasih!' : 'Pembayaran tunai dikonfirmasi. Terima kasih!');
+            }
           }),
         ),
       ]);
@@ -270,7 +297,7 @@ class DriverOrderCard extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.w800)),
-                Text('${Fmt.km(o.distanceKm)} • ${Fmt.rupiah(o.totalFare)} tunai', style: const TextStyle(color: AppColors.grey, fontSize: 12.5)),
+                Text('${Fmt.km(o.distanceKm)} • ${Fmt.rupiah(o.totalFare)} • ${o.paymentMethodLabel}', style: const TextStyle(color: AppColors.grey, fontSize: 12.5)),
               ]),
             ),
             if (o.customerPhone != null)

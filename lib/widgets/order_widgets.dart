@@ -42,9 +42,18 @@ class OrderTile extends StatelessWidget {
               const SizedBox(width: 6),
               Text(Fmt.km(order.distanceKm), style: const TextStyle(color: AppColors.grey, fontSize: 13)),
               const SizedBox(width: 12),
-              Icon(order.isPaid ? Icons.check_circle : Icons.payments_outlined, size: 16, color: order.isPaid ? AppColors.success : AppColors.grey),
+              Icon(
+                order.isPaid
+                    ? Icons.check_circle
+                    : (order.isQris ? Icons.qr_code_2_rounded : Icons.payments_outlined),
+                size: 16,
+                color: order.isPaid ? AppColors.success : AppColors.grey,
+              ),
               const SizedBox(width: 6),
-              Text(order.isPaid ? 'Lunas (tunai)' : 'Tunai', style: TextStyle(color: order.isPaid ? AppColors.success : AppColors.grey, fontSize: 13)),
+              Text(
+                order.isPaid ? 'Lunas (${order.paymentMethodLabel})' : order.paymentMethodLabel,
+                style: TextStyle(color: order.isPaid ? AppColors.success : AppColors.grey, fontSize: 13),
+              ),
               const Spacer(),
               Text(Fmt.rupiah(order.totalFare), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             ]),
@@ -130,7 +139,7 @@ class _OrderDetailState extends State<_OrderDetail> {
           if (widget.perspective != 'driver') InfoRow(Icons.two_wheeler_rounded, 'Driver', o.driver?.name ?? '-'),
           if (o.driver?.plate != null && widget.perspective != 'driver') InfoRow(Icons.pin_rounded, 'Kendaraan', '${o.driver?.vehicle ?? ''} • ${o.driver!.plate}'),
           InfoRow(Icons.route_rounded, 'Jarak', Fmt.km(o.distanceKm)),
-          InfoRow(Icons.payments_rounded, 'Metode pembayaran', 'Tunai (Cash)'),
+          InfoRow(o.isQris ? Icons.qr_code_2_rounded : Icons.payments_rounded, 'Metode pembayaran', o.isQris ? 'QRIS' : 'Tunai (Cash)'),
           InfoRow(o.isPaid ? Icons.check_circle_rounded : Icons.hourglass_bottom_rounded, 'Status pembayaran', o.isPaid ? 'Berhasil' : 'Belum dibayar',
               valueColor: o.isPaid ? AppColors.success : AppColors.warning),
           if (o.cancelReason != null) InfoRow(Icons.info_outline, 'Alasan pembatalan', o.cancelReason!, valueColor: AppColors.danger),

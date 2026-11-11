@@ -175,7 +175,7 @@ function save_upload(string $field, string $subdir, array $allowedExt = ['jpg', 
 /* ---------------- Serializers ---------------- */
 function driver_info(int $userId): ?array {
     $d = row("SELECT dp.verification_status, dp.rejection_reason, dp.is_online, dp.is_busy, dp.penalty_points,
-                     dp.rating_avg, dp.rating_count, dp.last_online_at,
+                     dp.rating_avg, dp.rating_count, dp.last_online_at, dp.qris_url,
                      v.brand_model, v.plate_number, v.color
               FROM driver_profiles dp
               LEFT JOIN vehicles v ON v.driver_id = dp.user_id
@@ -186,6 +186,7 @@ function driver_info(int $userId): ?array {
     $d['penalty_points'] = (int) $d['penalty_points'];
     $d['rating_avg'] = (float) $d['rating_avg'];
     $d['rating_count'] = (int) $d['rating_count'];
+    $d['qris_url'] = $d['qris_url'] ?? null;
     $d['penalty_threshold'] = (int) setting('penalty_block_threshold', '3');
     return $d;
 }
@@ -230,6 +231,7 @@ function shape_order(array $o): array {
         $o['driver'] = [
             'id' => $o['driver_id'], 'name' => $o['driver_name'], 'phone' => $o['driver_phone'],
             'avatar_url' => $o['driver_avatar_url'] ?? null,
+            'qris_url' => $di ? ($di['qris_url'] ?? null) : null,
             'vehicle' => $di ? trim(($di['brand_model'] ?? '') . ' ' . ($di['color'] ?? '')) : null,
             'plate_number' => $di['plate_number'] ?? null,
             'rating_avg' => $di['rating_avg'] ?? 0, 'rating_count' => $di['rating_count'] ?? 0,

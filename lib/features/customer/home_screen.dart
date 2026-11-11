@@ -35,6 +35,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
   final _noteCtrl = TextEditingController();
   bool _routing = false;
   bool _ordering = false;
+  String _paymentMethod = 'cash';
   LatLng? _me;
   Timer? _meTimer;
   double _panelHeight = 300;
@@ -250,6 +251,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
         dest: _dest!.pos,
         distanceKm: _route!.distanceKm,
         durationMin: _route!.durationMin,
+        paymentMethod: _paymentMethod,
       );
       HapticFeedback.mediumImpact();
       _noteCtrl.clear();
@@ -663,10 +665,17 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
               ),
             ]),
             const SizedBox(height: 8),
-            const Row(children: [
-              Icon(Icons.payments_outlined, size: 18, color: AppColors.primary),
-              SizedBox(width: 8),
-              Expanded(child: Text('Pembayaran tunai (Cash) langsung ke driver', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+            Row(children: [
+              Icon(_paymentMethod == 'qris' ? Icons.qr_code_2_rounded : Icons.payments_outlined, size: 18, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _paymentMethod == 'qris'
+                      ? 'Pembayaran QRIS: scan barcode driver saat perjalanan'
+                      : 'Pembayaran tunai (Cash) langsung ke driver',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                ),
+              ),
             ]),
             if (r.estimated) ...[
               const SizedBox(height: 8),
@@ -678,6 +687,76 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
             ],
           ]),
         ),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => setState(() => _paymentMethod = 'cash'),
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: _paymentMethod == 'cash' ? AppColors.primaryLight : AppColors.background,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _paymentMethod == 'cash' ? AppColors.primary : Colors.transparent,
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.payments_rounded, size: 18, color: _paymentMethod == 'cash' ? AppColors.primaryDark : AppColors.grey),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Tunai (Cash)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _paymentMethod == 'cash' ? AppColors.primaryDark : AppColors.text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: InkWell(
+              onTap: () => setState(() => _paymentMethod = 'qris'),
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: _paymentMethod == 'qris' ? AppColors.primaryLight : AppColors.background,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _paymentMethod == 'qris' ? AppColors.primary : Colors.transparent,
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.qr_code_2_rounded, size: 18, color: _paymentMethod == 'qris' ? AppColors.primaryDark : AppColors.grey),
+                    const SizedBox(width: 6),
+                    Text(
+                      'QRIS',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _paymentMethod == 'qris' ? AppColors.primaryDark : AppColors.text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ]),
         const SizedBox(height: 10),
         TextField(
           controller: _noteCtrl,
@@ -695,7 +774,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
         FilledButton.icon(
           onPressed: _ordering ? null : _order,
           icon: _ordering ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white)) : const Icon(Icons.two_wheeler_rounded),
-          label: Text(_ordering ? 'Memesan...' : 'Pesan Ojek • ${Fmt.rupiah(fare)}'),
+          label: Text(_ordering ? 'Memesan...' : 'Pesan Ojek (${_paymentMethod == 'qris' ? 'QRIS' : 'Tunai'}) • ${Fmt.rupiah(fare)}'),
         ),
       ],
     ]);
@@ -771,7 +850,7 @@ class _SearchingPanelState extends State<_SearchingPanel> with SingleTickerProvi
           RouteSummary(pickup: o.pickupAddress, dest: o.destAddress),
           const Divider(height: 18),
           Row(children: [
-            Text('${Fmt.km(o.distanceKm)} • ${o.code}', style: const TextStyle(color: AppColors.grey, fontSize: 12.5)),
+            Text('${Fmt.km(o.distanceKm)} • ${o.code} • ${o.paymentMethodLabel}', style: const TextStyle(color: AppColors.grey, fontSize: 12.5)),
             const Spacer(),
             Text(Fmt.rupiah(o.totalFare), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.primary)),
           ]),
@@ -882,11 +961,20 @@ class _TrackingPanel extends StatelessWidget {
       RouteSummary(pickup: order.pickupAddress, dest: order.destAddress),
       const Divider(height: 22),
       Row(children: [
-        const Icon(Icons.payments_outlined, size: 20, color: AppColors.grey),
+        Icon(order.isQris ? Icons.qr_code_2_rounded : Icons.payments_outlined, size: 20, color: order.isQris ? AppColors.primary : AppColors.grey),
         const SizedBox(width: 8),
-        const Expanded(child: Text('Bayar tunai ke driver', style: TextStyle(color: AppColors.grey))),
+        Expanded(
+          child: Text(
+            order.isQris ? 'Metode bayar: QRIS' : 'Bayar tunai ke driver',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
         Text(Fmt.rupiah(order.totalFare), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.primary)),
       ]),
+      if (order.isQris) ...[
+        const SizedBox(height: 12),
+        _QrisPaymentCard(order: order),
+      ],
     ]);
   }
 }
@@ -989,12 +1077,16 @@ class _FinishedPanelState extends State<_FinishedPanel> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(16)),
         child: Column(children: [
-          const Text('Bayar tunai kepada driver', style: TextStyle(color: AppColors.primaryDark, fontSize: 12.5)),
+          Text(o.isQris ? 'Metode pembayaran: QRIS' : 'Bayar tunai kepada driver', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12.5)),
           const SizedBox(height: 2),
           Text(Fmt.rupiah(o.totalFare), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.primaryDark)),
-          Text('${Fmt.km(o.distanceKm)} • ${o.code}', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12)),
+          Text('${Fmt.km(o.distanceKm)} • ${o.code} • ${o.paymentMethodLabel}', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12)),
         ]),
       ),
+      if (o.isQris) ...[
+        const SizedBox(height: 10),
+        _QrisPaymentCard(order: o),
+      ],
       const SizedBox(height: 14),
       Text('Beri nilai untuk ${o.driver?.name ?? 'driver'}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
       const SizedBox(height: 6),
@@ -1049,6 +1141,170 @@ class _MeasureSizeState extends State<_MeasureSize> {
       }
     });
     return KeyedSubtree(key: _key, child: widget.child);
+  }
+}
+
+// ======================= WIDGET: QRIS PAYMENT CARD =======================
+class _QrisPaymentCard extends StatelessWidget {
+  final Order order;
+  const _QrisPaymentCard({required this.order});
+
+  void _showEnlargedQris(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.qr_code_2_rounded, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'QRIS Driver',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Scan QRIS untuk membayar ${Fmt.rupiah(order.totalFare)} ke ${order.driver?.name ?? 'Driver'}',
+                style: const TextStyle(color: AppColors.grey, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  color: Colors.white,
+                  padding: const EdgeInsets.all(8),
+                  child: InteractiveViewer(
+                    maxScale: 4.0,
+                    child: Image.network(
+                      Api.resolveUrl(imageUrl),
+                      fit: BoxFit.contain,
+                      height: 280,
+                      errorBuilder: (_, __, ___) => const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Text('Gagal memuat barcode QRIS', style: TextStyle(color: AppColors.danger)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Bisa di-scan menggunakan seluruh aplikasi m-Banking atau E-Wallet (BCA, Mandiri, BRI, GoPay, Dana, OVO, ShopeePay, dll.)',
+                style: TextStyle(fontSize: 11.5, color: AppColors.grey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Tutup'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final qris = order.driver?.qrisUrl;
+    if (qris == null || qris.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Driver belum mengunggah foto QRIS di sistem. Anda dapat meminta driver menunjukkan QRIS secara langsung atau membayar tunai.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.warning, height: 1.3),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: () => _showEnlargedQris(context, qris),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(4),
+                child: Image.network(
+                  Api.resolveUrl(qris),
+                  width: 52,
+                  height: 52,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.qr_code_2_rounded, size: 38, color: AppColors.primary),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.qr_code_2_rounded, size: 16, color: AppColors.primaryDark),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'QRIS Driver: ${order.driver?.name ?? ''}',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.primaryDark),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  const Text('Ketuk untuk scan / perbesar barcode QRIS', style: TextStyle(fontSize: 11.5, color: AppColors.grey)),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Nominal: ${Fmt.rupiah(order.totalFare)}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.fullscreen_rounded, color: AppColors.primaryDark),
+          ],
+        ),
+      ),
+    );
   }
 }
 

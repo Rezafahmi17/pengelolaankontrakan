@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/api.dart';
 import '../../core/models.dart';
@@ -142,6 +145,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   ]),
                 ),
               ],
+              const SectionTitle('Setoran Biaya Aplikasi (QRIS Admin)'),
+              _DriverFeePaymentSection(onChanged: () => _key.currentState?.reload()),
               SectionTitle('Riwayat transaksi lunas',
                   trailing: Text('${txs.length} transaksi',
                       style: const TextStyle(color: AppColors.grey, fontSize: 12.5))),
@@ -164,6 +169,664 @@ class _EarningsScreenState extends State<EarningsScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _DriverFeePaymentSection extends StatefulWidget {
+  final VoidCallback onChanged;
+  const _DriverFeePaymentSection({required this.onChanged});
+
+  @override
+  State<_DriverFeePaymentSection> createState() => _DriverFeePaymentSectionState();
+}
+
+class _DriverFeePaymentSectionState extends State<_DriverFeePaymentSection> {
+  final _key = GlobalKey<AsyncPageState>();
+
+  void _openPaySheet(BuildContext context, Map data) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _PayFeeSheet(
+        data: data,
+        onSuccess: () {
+          _key.currentState?.reload();
+          widget.onChanged();
+        },
+      ),
+    );
+  }
+
+  void _showEnlargedProof(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.receipt_long_rounded, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Bukti Pembayaran Setoran', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: InteractiveViewer(
+                  maxScale: 4.0,
+                  child: Image.network(
+                    Api.resolveUrl(url),
+                    height: 320,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Text('Gagal memuat bukti pembayaran', style: TextStyle(color: AppColors.danger)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Tutup'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AsyncPage(
+      key: _key,
+      load: () => Api.get('driver/fee-payments'),
+      builder: (context, data) {
+        final feePerTrip = data['fee_per_trip'] as num? ?? 1000;
+        final completedTrips = data['completed_trips'] as num? ?? 0;
+        final totalObligation = data['total_fee_obligation'] as num? ?? 0;
+        final totalPaid = data['total_fee_paid'] as num? ?? 0;
+        final totalPending = data['total_fee_pending'] as num? ?? 0;
+        final unpaidFee = data['unpaid_fee'] as num? ?? 0;
+        final paymentsRaw = (data['payments'] as List? ?? []);
+        final payments = paymentsRaw.map((e) => DriverFeePayment.fromJson(Map<String, dynamic>.from(e))).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.account_balance_wallet_rounded, color: AppColors.primary, size: 22),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Biaya Setoran ke Super Admin', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                              Text(
+                                '${Fmt.rupiah(feePerTrip)} / transaksi selesai (ditetapkan Admin)',
+                                style: const TextStyle(color: AppColors.grey, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Total Trip', style: TextStyle(color: AppColors.grey, fontSize: 11)),
+                                Text('$completedTrips trip', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                                const SizedBox(height: 4),
+                                const Text('Kewajiban', style: TextStyle(color: AppColors.grey, fontSize: 11)),
+                                Text(Fmt.rupiah(totalObligation), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Sudah Disetujui', style: TextStyle(color: AppColors.grey, fontSize: 11)),
+                                Text(Fmt.rupiah(totalPaid), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: AppColors.success)),
+                                const SizedBox(height: 4),
+                                const Text('Menunggu Verifikasi', style: TextStyle(color: AppColors.grey, fontSize: 11)),
+                                Text(Fmt.rupiah(totalPending), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: AppColors.warning)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: unpaidFee > 0 ? AppColors.danger.withValues(alpha: 0.1) : AppColors.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: unpaidFee > 0 ? AppColors.danger.withValues(alpha: 0.3) : AppColors.success.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                unpaidFee > 0 ? 'Sisa Setoran yang Harus Dibayar' : 'Status Kewajiban Setoran',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: unpaidFee > 0 ? AppColors.danger : AppColors.success,
+                                ),
+                              ),
+                              Text(
+                                unpaidFee > 0 ? Fmt.rupiah(unpaidFee) : 'Lunas (Tidak ada tunggakan)',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: unpaidFee > 0 ? AppColors.danger : AppColors.success,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Icon(
+                            unpaidFee > 0 ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+                            color: unpaidFee > 0 ? AppColors.danger : AppColors.success,
+                            size: 28,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () => _openPaySheet(context, data),
+                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                      label: const Text('Bayar Setoran via QRIS Admin', style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (payments.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 6),
+                child: Text('Riwayat Pembayaran Setoran ke Admin', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+              for (final p in payments)
+                Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (p.proofImage != null && p.proofImage!.isNotEmpty)
+                          GestureDetector(
+                            onTap: () => _showEnlargedProof(context, p.proofImage!),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Image.network(
+                                    Api.resolveUrl(p.proofImage!),
+                                    width: 54,
+                                    height: 54,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 54,
+                                      height: 54,
+                                      color: AppColors.background,
+                                      child: const Icon(Icons.receipt_rounded, color: AppColors.grey),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 54,
+                                    height: 54,
+                                    color: Colors.black26,
+                                    child: const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 20),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            width: 54,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.receipt_rounded, color: AppColors.grey),
+                          ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(Fmt.rupiah(p.amount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+                                  StatusChip(p.statusLabel, p.statusColor),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(Fmt.dateTime(p.createdAt), style: const TextStyle(color: AppColors.grey, fontSize: 11.5)),
+                              if (p.notes != null && p.notes!.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text('Catatan: ${p.notes}', style: const TextStyle(fontSize: 12, color: AppColors.text)),
+                              ],
+                              if (p.adminNote != null && p.adminNote!.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: p.status == 'rejected' ? AppColors.danger.withValues(alpha: 0.1) : AppColors.background,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'Pesan Admin: ${p.adminNote}',
+                                    style: TextStyle(fontSize: 11.5, color: p.status == 'rejected' ? AppColors.danger : AppColors.grey, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PayFeeSheet extends StatefulWidget {
+  final Map data;
+  final VoidCallback onSuccess;
+  const _PayFeeSheet({required this.data, required this.onSuccess});
+
+  @override
+  State<_PayFeeSheet> createState() => _PayFeeSheetState();
+}
+
+class _PayFeeSheetState extends State<_PayFeeSheet> {
+  late final TextEditingController _amountCtrl;
+  final _notesCtrl = TextEditingController();
+  File? _proofFile;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final unpaid = widget.data['unpaid_fee'] as num? ?? 0;
+    final feePerTrip = widget.data['fee_per_trip'] as num? ?? 1000;
+    _amountCtrl = TextEditingController(text: '${unpaid > 0 ? unpaid : feePerTrip}');
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickProof() async {
+    final picker = ImagePicker();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SheetHandle(),
+              const SizedBox(height: 12),
+              const Text('Upload Bukti Transfer', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded, color: AppColors.primary),
+                title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(c, ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_rounded, color: AppColors.primary),
+                title: const Text('Ambil dengan Kamera', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(c, ImageSource.camera),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (source == null) return;
+    final f = await picker.pickImage(source: source, maxWidth: 1200, maxHeight: 1200, imageQuality: 85);
+    if (f != null && mounted) {
+      setState(() => _proofFile = File(f.path));
+    }
+  }
+
+  Future<void> _submit() async {
+    final amount = int.tryParse(_amountCtrl.text.trim()) ?? 0;
+    if (amount <= 0) {
+      showMsg(context, 'Masukkan jumlah nominal pembayaran yang valid', error: true);
+      return;
+    }
+    if (_proofFile == null) {
+      showMsg(context, 'Silakan unggah foto bukti transfer / pembayaran QRIS', error: true);
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      await Api.multipart(
+        'driver/fee-payments',
+        fields: {
+          'amount': '$amount',
+          'notes': _notesCtrl.text.trim(),
+        },
+        files: {
+          'proof': _proofFile!.path,
+        },
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        showMsg(context, 'Bukti pembayaran berhasil dikirim! Menunggu verifikasi Super Admin.');
+        widget.onSuccess();
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _showEnlarged(String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.qr_code_2_rounded, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('QRIS Resmi Super Admin', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: InteractiveViewer(
+                  maxScale: 4.0,
+                  child: Image.network(
+                    Api.resolveUrl(url),
+                    height: 300,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Tutup'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final adminQris = widget.data['admin_qris_url'] as String?;
+    final hasAdminQris = adminQris != null && adminQris.isNotEmpty;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.88,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          const SheetHandle(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: Row(
+              children: [
+                const Text('Bayar Setoran Biaya Admin', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              children: [
+                const Text(
+                  '1. Scan Barcode QRIS Resmi Super Admin di bawah ini melalui m-Banking / E-Wallet:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+                const SizedBox(height: 10),
+                if (hasAdminQris)
+                  Center(
+                    child: InkWell(
+                      onTap: () => _showEnlarged(adminQris),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.greyLight),
+                        ),
+                        child: Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.network(
+                                Api.resolveUrl(adminQris),
+                                width: 170,
+                                height: 170,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Icon(Icons.qr_code_2_rounded, size: 100, color: AppColors.grey),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.zoom_in_rounded, size: 16, color: AppColors.primary),
+                                SizedBox(width: 4),
+                                Text('Ketuk untuk perbesar barcode', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: AppColors.warning),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Super Admin belum mengunggah barcode QRIS resmi. Anda tetap dapat mengunggah bukti transfer manual jika sudah melakukan transfer.',
+                            style: TextStyle(fontSize: 12.5, color: AppColors.warning, height: 1.3),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 18),
+                const Text(
+                  '2. Masukkan Nominal yang Anda Bayarkan:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _amountCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Nominal Transfer (Rp)',
+                    prefixText: 'Rp ',
+                    prefixIcon: Icon(Icons.payments_rounded, color: AppColors.primary),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '3. Unggah Foto Bukti Transfer / Screenshot Pembayaran:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+                const SizedBox(height: 8),
+                if (_proofFile != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(_proofFile!, width: 50, height: 50, fit: BoxFit.cover),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Foto bukti siap dikirim', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                              Text('Ketuk tombol di kanan untuk mengganti', style: TextStyle(fontSize: 11.5, color: AppColors.grey)),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _pickProof,
+                          child: const Text('Ganti'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: _pickProof,
+                    icon: const Icon(Icons.upload_file_rounded),
+                    label: const Text('Pilih Foto Bukti Pembayaran'),
+                  ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _notesCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Catatan Setoran (Opsional)',
+                    hintText: 'Misal: "Setoran 5 trip tanggal 11 Nov"',
+                    prefixIcon: Icon(Icons.notes_rounded, color: AppColors.primary),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: _submitting ? null : _submit,
+                  icon: _submitting
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.send_rounded),
+                  label: Text(_submitting ? 'Mengirim Bukti...' : 'Kirim Bukti Pembayaran ke Super Admin'),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

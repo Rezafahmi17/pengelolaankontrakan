@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../core/utils.dart';
 import '../../widgets/common.dart';
 import '../../widgets/profile_view.dart';
+import 'admin_fee_payments_screen.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
   const AdminSettingsScreen({super.key});
@@ -175,6 +176,32 @@ class _TariffAndSettingsTabState extends State<_TariffAndSettingsTab> {
                     onTap: () => _editSetting(s['key'], '${s['value']}', '${s['description'] ?? s['key']}'),
                   ),
               ]),
+            ),
+            const SectionTitle('Setoran Driver & QRIS Super Admin'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Biaya potongan aplikasi yang wajib disetorkan oleh driver per transaksi selesai dengan menggunakan QRIS Super Admin.',
+                      style: TextStyle(color: AppColors.grey, fontSize: 12.5),
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFeePaymentsScreen())),
+                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                      label: const Text('Buka Monitoring Setoran & Kelola QRIS', style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         );

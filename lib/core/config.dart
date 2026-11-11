@@ -31,5 +31,10 @@ class AppConfig {
 
   static const String appName = 'JEKPOL';
   static const String appTagline = 'Ojek Online Mahasiswa Politeknik Negeri Lampung';
+
+  /// Biaya potongan penarikan driver ke super admin (default Rp 1.000).
+  static int withdrawalFee = 1000;
+  /// URL gambar barcode QRIS resmi Super Admin.
+  static String adminQrisUrl = '';
 }
 

@@ -18,6 +18,7 @@ class DriverInfo {
   final String? vehicle;
   final String? plate;
   final String? vehicleColor;
+  final String? qrisUrl;
 
   DriverInfo({
     required this.verificationStatus,
@@ -31,6 +32,7 @@ class DriverInfo {
     this.vehicle,
     this.plate,
     this.vehicleColor,
+    this.qrisUrl,
   });
 
   bool get approved => verificationStatus == 'approved';
@@ -47,6 +49,7 @@ class DriverInfo {
         vehicle: j['brand_model'],
         plate: j['plate_number'],
         vehicleColor: j['color'],
+        qrisUrl: j['qris_url'],
       );
 }
 
@@ -146,6 +149,7 @@ class DriverBrief {
   final String name;
   final String? phone;
   final String? avatarUrl;
+  final String? qrisUrl;
   final String? vehicle;
   final String? plate;
   final double ratingAvg;
@@ -156,6 +160,7 @@ class DriverBrief {
     required this.name,
     this.phone,
     this.avatarUrl,
+    this.qrisUrl,
     this.vehicle,
     this.plate,
     required this.ratingAvg,
@@ -170,6 +175,7 @@ class DriverBrief {
       name: j['name'] ?? '',
       phone: j['phone'],
       avatarUrl: j['avatar_url'],
+      qrisUrl: j['qris_url'],
       vehicle: j['vehicle'],
       plate: j['plate_number'],
       ratingAvg: _d(j['rating_avg']),
@@ -238,6 +244,8 @@ class Order {
   bool get isCompleted => status == 'completed';
   bool get isCancelled => status == 'cancelled_customer' || status == 'cancelled_driver' || status == 'no_driver';
   bool get isPaid => paymentStatus == 'paid';
+  bool get isQris => paymentMethod.toLowerCase() == 'qris';
+  String get paymentMethodLabel => isQris ? 'QRIS' : 'Tunai';
   bool get toPickup => status == 'accepted' || status == 'heading_pickup';
   bool get inTrip => status == 'in_trip' || status == 'picked_up';
 
@@ -288,6 +296,7 @@ class IncomingOrder {
   final double distanceKm;
   final int durationMin;
   final int totalFare;
+  final String paymentMethod;
   final double? pickupDistanceKm;
   final int secondsLeft;
   IncomingOrder({
@@ -301,9 +310,13 @@ class IncomingOrder {
     required this.distanceKm,
     required this.durationMin,
     required this.totalFare,
+    this.paymentMethod = 'cash',
     this.pickupDistanceKm,
     required this.secondsLeft,
   });
+
+  bool get isQris => paymentMethod.toLowerCase() == 'qris';
+  String get paymentMethodLabel => isQris ? 'QRIS' : 'Tunai';
 
   factory IncomingOrder.fromJson(Map<String, dynamic> j) => IncomingOrder(
         id: _i(j['id']),
@@ -316,8 +329,79 @@ class IncomingOrder {
         distanceKm: _d(j['distance_km']),
         durationMin: _i(j['duration_min']),
         totalFare: _i(j['total_fare']),
+        paymentMethod: j['payment_method'] ?? 'cash',
         pickupDistanceKm: j['pickup_distance_km'] == null ? null : _d(j['pickup_distance_km']),
         secondsLeft: _i(j['seconds_left']),
+      );
+}
+
+class DriverFeePayment {
+  final int id;
+  final int driverId;
+  final String? driverName;
+  final String? driverNpm;
+  final String? driverPhone;
+  final String? brandModel;
+  final String? plateNumber;
+  final int amount;
+  final String? proofImage;
+  final String? notes;
+  final String status; // pending | approved | rejected
+  final String? adminNote;
+  final String? verifiedByName;
+  final String? verifiedAt;
+  final String createdAt;
+
+  DriverFeePayment({
+    required this.id,
+    required this.driverId,
+    this.driverName,
+    this.driverNpm,
+    this.driverPhone,
+    this.brandModel,
+    this.plateNumber,
+    required this.amount,
+    this.proofImage,
+    this.notes,
+    required this.status,
+    this.adminNote,
+    this.verifiedByName,
+    this.verifiedAt,
+    required this.createdAt,
+  });
+
+  bool get isPending => status == 'pending';
+  bool get isApproved => status == 'approved';
+  bool get isRejected => status == 'rejected';
+
+  Color get statusColor => switch (status) {
+        'approved' => AppColors.success,
+        'rejected' => AppColors.danger,
+        _ => AppColors.warning,
+      };
+
+  String get statusLabel => switch (status) {
+        'approved' => 'Disetujui',
+        'rejected' => 'Ditolak',
+        _ => 'Menunggu Verifikasi',
+      };
+
+  factory DriverFeePayment.fromJson(Map<String, dynamic> j) => DriverFeePayment(
+        id: _i(j['id']),
+        driverId: _i(j['driver_id']),
+        driverName: j['driver_name'],
+        driverNpm: j['driver_npm'],
+        driverPhone: j['driver_phone'],
+        brandModel: j['brand_model'],
+        plateNumber: j['plate_number'],
+        amount: _i(j['amount']),
+        proofImage: j['proof_image'],
+        notes: j['notes'],
+        status: j['status'] ?? 'pending',
+        adminNote: j['admin_note'],
+        verifiedByName: j['verified_by_name'],
+        verifiedAt: j['verified_at'],
+        createdAt: j['created_at'] ?? '',
       );
 }
 
