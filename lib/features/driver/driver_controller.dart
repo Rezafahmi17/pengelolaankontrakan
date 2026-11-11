@@ -39,6 +39,7 @@ class DriverController extends ChangeNotifier {
   DriverInfo? get info => auth.user?.driver;
   bool get online => info?.isOnline ?? false;
   bool get canWork => auth.user != null && !auth.user!.isBlocked && (info?.approved ?? false);
+  bool isTogglingOnline = false;
 
   void start() {
     _timer?.cancel();
@@ -172,13 +173,28 @@ class DriverController extends ChangeNotifier {
 
   // ---------- aksi ----------
   Future<String> setOnline(bool value) async {
-    final p = await LocationService.current();
-    final r = await Api.post('driver/status', body: {'online': value, 'lat': p.latitude, 'lng': p.longitude});
-    auth.setUser(AppUser.fromJson(r['user']));
-    position = p;
-    if (!value) incoming = [];
+    isTogglingOnline = true;
     _notify();
-    return r['_message'] ?? '';
+    try {
+      LatLng p = position ?? LocationService.simulatedPosition;
+      if (value) {
+        try {
+          p = await LocationService.current();
+        } catch (_) {}
+      }
+      final r = await Api.post('driver/status', body: {
+        'online': value,
+        'lat': p.latitude,
+        'lng': p.longitude,
+      });
+      auth.setUser(AppUser.fromJson(r['user']));
+      position = p;
+      if (!value) incoming = [];
+      return r['_message'] ?? '';
+    } finally {
+      isTogglingOnline = false;
+      _notify();
+    }
   }
 
   Future<void> accept(IncomingOrder o) async {

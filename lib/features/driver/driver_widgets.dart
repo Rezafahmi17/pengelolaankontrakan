@@ -260,7 +260,12 @@ class DriverOrderCard extends StatelessWidget {
         decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(16)),
         child: Column(children: [
           Row(children: [
-            Avatar(o.customerName.isEmpty ? '?' : o.customerName[0].toUpperCase(), size: 40, bg: Colors.white),
+            Avatar(
+              o.customerName.isEmpty ? '?' : o.customerName[0].toUpperCase(),
+              url: o.customerAvatarUrl,
+              size: 40,
+              bg: Colors.white,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

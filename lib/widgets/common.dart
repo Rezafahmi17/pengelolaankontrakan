@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -157,18 +159,33 @@ class StatusChip extends StatelessWidget {
 
 class Avatar extends StatelessWidget {
   final String initials;
+  final String? url;
+  final File? file;
   final double size;
   final Color? bg;
-  const Avatar(this.initials, {super.key, this.size = 48, this.bg});
+  const Avatar(this.initials, {super.key, this.url, this.file, this.size = 48, this.bg});
 
   @override
   Widget build(BuildContext context) {
+    final fallback = Center(
+      child: Text(
+        initials,
+        style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: size * 0.36),
+      ),
+    );
+
+    Widget? child;
+    if (file != null) {
+      child = Image.file(file!, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+    } else if (url != null && url!.trim().isNotEmpty) {
+      child = Image.network(Api.resolveUrl(url!), width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+    }
+
     return Container(
       width: size,
       height: size,
-      alignment: Alignment.center,
       decoration: BoxDecoration(color: bg ?? AppColors.primaryLight, shape: BoxShape.circle),
-      child: Text(initials, style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: size * 0.36)),
+      child: ClipOval(child: child ?? fallback),
     );
   }
 }

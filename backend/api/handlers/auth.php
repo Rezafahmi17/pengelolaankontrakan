@@ -95,12 +95,38 @@ function h_update_profile(): void {
     $phone = preg_replace('/[\s\-+]/', '', (string) in('phone', $u['phone']));
     if ($name === '') throw new ApiException('Nama wajib diisi', 422);
     if (!preg_match('/^[0-9]{8,15}$/', $phone)) throw new ApiException('Nomor HP tidak valid', 422);
-    q('UPDATE users SET name = ?, phone = ? WHERE id = ?', [$name, $phone, $u['id']]);
+
+    $avatar = save_upload('avatar', 'avatars', ['jpg', 'jpeg', 'png', 'webp']);
+    $avatarUrl = $avatar ? $avatar['path'] : ($u['avatar_url'] ?? null);
+
+    q('UPDATE users SET name = ?, phone = ?, avatar_url = ? WHERE id = ?', [$name, $phone, $avatarUrl, $u['id']]);
     if ($u['role'] === 'driver' && (in('plate_number') || in('vehicle_model'))) {
         q('UPDATE vehicles SET brand_model = ?, plate_number = ?, color = ? WHERE driver_id = ?',
             [trim((string) in('vehicle_model', '')), strtoupper(trim((string) in('plate_number', ''))), in('vehicle_color'), $u['id']]);
     }
     ok(['user' => user_public(row('SELECT * FROM users WHERE id = ?', [$u['id']]))], 'Profil diperbarui');
+}
+
+function h_avatar(array $p): void {
+    $file = basename($p['file'] ?? '');
+    if ($file === '') throw new ApiException('File tidak valid', 400);
+    $path = realpath(__DIR__ . '/../uploads/avatars/' . $file);
+    $root = realpath(__DIR__ . '/../uploads/avatars');
+    if (!$path || !$root || strpos($path, $root) !== 0 || !is_file($path)) {
+        throw new ApiException('Avatar tidak ditemukan', 404);
+    }
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $mime = match($ext) {
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        'gif' => 'image/gif',
+        default => 'image/jpeg',
+    };
+    header("Content-Type: $mime");
+    header('Content-Length: ' . filesize($path));
+    header('Cache-Control: public, max-age=86400');
+    readfile($path);
+    exit;
 }
 
 function h_change_password(): void {

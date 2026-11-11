@@ -21,6 +21,7 @@ $routes = [
     ['GET',  'auth/me', 'h_me'],
     ['POST', 'profile/update', 'h_update_profile'],
     ['POST', 'profile/password', 'h_change_password'],
+    ['GET',  'avatars/{file}', 'h_avatar'],
     ['GET',  'notifications', 'h_notifications'],
     ['POST', 'notifications/read', 'h_notifications_read'],
     ['POST', 'complaints', 'h_complaint_create'],
@@ -81,7 +82,7 @@ try {
     $methodMatched = false;
 
     foreach ($routes as [$m, $pattern, $handler]) {
-        $regex = '#^' . preg_replace('#\{(\w+)\}#', '(?P<$1>[0-9]+)', $pattern) . '$#';
+        $regex = '#^' . preg_replace_callback('#\{(\w+)\}#', fn($match) => $match[1] === 'id' ? '(?P<id>[0-9]+)' : '(?P<' . $match[1] . '>[a-zA-Z0-9_.-]+)', $pattern) . '$#';
         if (preg_match($regex, $path, $matches)) {
             if ($m !== $method) { $methodMatched = true; continue; }
             $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);

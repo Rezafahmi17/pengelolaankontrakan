@@ -417,7 +417,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(children: [
-              Avatar(user.initials, size: 40),
+              Avatar(user.initials, url: user.avatarUrl, size: 40),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -843,7 +843,12 @@ class _TrackingPanel extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(16)),
           child: Row(children: [
-            Avatar(d.name.isEmpty ? '?' : d.name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase(), size: 50, bg: Colors.white),
+            Avatar(
+              d.name.isEmpty ? '?' : d.name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase(),
+              url: d.avatarUrl,
+              size: 50,
+              bg: Colors.white,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

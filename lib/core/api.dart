@@ -39,6 +39,11 @@ class Api {
 
   /// URL gambar/dokumen yang membutuhkan autentikasi (dipakai Image.network).
   static String authedUrl(String path) => '${AppConfig.baseUrl}/$path';
+  static String resolveUrl(String path) {
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    final clean = path.replaceAll(RegExp(r'^/+'), '');
+    return '${AppConfig.baseUrl}/$clean';
+  }
   static Map<String, String> get authHeaders => {if (token != null) 'X-Auth-Token': token!};
 
   static Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) =>

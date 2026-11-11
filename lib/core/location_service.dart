@@ -66,8 +66,16 @@ class LocationService {
   static Future<LatLng> current() async {
     if (!_denied || await ensurePermission(ask: false)) {
       try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          final ll = LatLng(last.latitude, last.longitude);
+          if (Geo.inServiceArea(ll)) {
+            simulated = false;
+            return ll;
+          }
+        }
         final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 6)),
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium, timeLimit: Duration(milliseconds: 1800)),
         );
         final ll = LatLng(pos.latitude, pos.longitude);
         if (Geo.inServiceArea(ll)) {

@@ -192,7 +192,7 @@ function driver_info(int $userId): ?array {
 function user_public(array $u): array {
     $out = [
         'id' => (int) $u['id'], 'role' => $u['role'], 'name' => $u['name'], 'npm' => $u['npm'],
-        'email' => $u['email'], 'phone' => $u['phone'], 'status' => $u['status'],
+        'email' => $u['email'], 'phone' => $u['phone'], 'avatar_url' => $u['avatar_url'] ?? null, 'status' => $u['status'],
         'blocked_reason' => $u['blocked_reason'], 'created_at' => $u['created_at'],
     ];
     if ($u['role'] === 'driver') $out['driver'] = driver_info((int) $u['id']);
@@ -202,8 +202,8 @@ function user_public(array $u): array {
 const ACTIVE_STATUSES = "'waiting','accepted','heading_pickup','picked_up','in_trip'";
 
 function order_full(int $id): ?array {
-    $o = row("SELECT o.*, c.name AS customer_name, c.phone AS customer_phone,
-                     d.name AS driver_name, d.phone AS driver_phone,
+    $o = row("SELECT o.*, c.name AS customer_name, c.phone AS customer_phone, c.avatar_url AS customer_avatar_url,
+                     d.name AS driver_name, d.phone AS driver_phone, d.avatar_url AS driver_avatar_url,
                      p.status AS payment_status, p.paid_at,
                      (SELECT COUNT(*) FROM ratings r WHERE r.order_id = o.id) AS rated,
                      (SELECT r.rating FROM ratings r WHERE r.order_id = o.id) AS rating_value
@@ -222,12 +222,14 @@ function shape_order(array $o): array {
     $o['status_label'] = status_label($o['status']);
     $o['rated'] = !empty($o['rated']);
     $o['payment_status'] = $o['payment_status'] ?? 'pending';
+    $o['customer_avatar_url'] = $o['customer_avatar_url'] ?? null;
     $o['driver'] = null;
     if (!empty($o['driver_id'])) {
         $di = driver_info($o['driver_id']);
         $loc = row('SELECT lat, lng, heading, updated_at FROM driver_locations WHERE driver_id = ?', [$o['driver_id']]);
         $o['driver'] = [
             'id' => $o['driver_id'], 'name' => $o['driver_name'], 'phone' => $o['driver_phone'],
+            'avatar_url' => $o['driver_avatar_url'] ?? null,
             'vehicle' => $di ? trim(($di['brand_model'] ?? '') . ' ' . ($di['color'] ?? '')) : null,
             'plate_number' => $di['plate_number'] ?? null,
             'rating_avg' => $di['rating_avg'] ?? 0, 'rating_count' => $di['rating_count'] ?? 0,

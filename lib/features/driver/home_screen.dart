@@ -234,7 +234,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with AutomaticKeepA
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(children: [
-              Avatar(ctrl.auth.user?.initials ?? 'D', size: 42),
+              Avatar(ctrl.auth.user?.initials ?? 'D', url: ctrl.auth.user?.avatarUrl, size: 42),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -263,13 +263,41 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with AutomaticKeepA
                   ]),
                 ]),
               ),
-              Switch(
-                value: ctrl.online,
-                activeThumbColor: Colors.white,
-                activeTrackColor: AppColors.primary,
-                onChanged: !approved || ctrl.active != null
-                    ? null
-                    : (val) async {
+              ctrl.isTogglingOnline
+                  ? const SizedBox(
+                      width: 48,
+                      height: 36,
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.primary),
+                        ),
+                      ),
+                    )
+                  : Switch(
+                      value: ctrl.online,
+                      activeThumbColor: Colors.white,
+                      activeTrackColor: AppColors.primary,
+                      onChanged: (val) async {
+                        if (!approved) {
+                          showMsg(
+                            context,
+                            isPending
+                                ? 'Akun Anda sedang dalam proses verifikasi admin sebelum dapat mengaktifkan status online.'
+                                : 'Akun Anda belum disetujui untuk online.',
+                            error: true,
+                          );
+                          return;
+                        }
+                        if (ctrl.active != null) {
+                          showMsg(
+                            context,
+                            'Selesaikan pesanan yang sedang aktif terlebih dahulu sebelum mengubah status online.',
+                            error: true,
+                          );
+                          return;
+                        }
                         try {
                           final msg = await ctrl.setOnline(val);
                           if (mounted) showMsg(context, msg);
@@ -277,7 +305,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with AutomaticKeepA
                           if (mounted) showError(context, e);
                         }
                       },
-              ),
+                    ),
             ]),
             if (isPending) ...[
               const Divider(height: 16),
@@ -357,16 +385,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with AutomaticKeepA
               minimumSize: const Size.fromHeight(48),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
-            onPressed: (info?.approved ?? false)
-                ? () async {
-                    try {
-                      final msg = await ctrl.setOnline(true);
-                      if (mounted) showMsg(context, msg);
-                    } catch (e) {
-                      if (mounted) showError(context, e);
-                    }
-                  }
-                : null,
+            onPressed: () async {
+              if (!(info?.approved ?? false)) {
+                showMsg(
+                  context,
+                  (info?.verificationStatus == 'pending')
+                      ? 'Akun Anda sedang dalam proses verifikasi admin sebelum dapat mengaktifkan status online.'
+                      : 'Akun Anda belum disetujui untuk online.',
+                  error: true,
+                );
+                return;
+              }
+              try {
+                final msg = await ctrl.setOnline(true);
+                if (mounted) showMsg(context, msg);
+              } catch (e) {
+                if (mounted) showError(context, e);
+              }
+            },
             icon: const Icon(Icons.check_circle_outline_rounded, size: 20),
             label: const Text('Aktifkan Status Online', style: TextStyle(fontWeight: FontWeight.w700)),
           ),

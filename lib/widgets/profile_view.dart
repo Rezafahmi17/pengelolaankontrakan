@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../core/api.dart';
@@ -35,7 +38,7 @@ class ProfileView extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
             ),
             child: Row(children: [
-              Avatar(u.initials, size: 64, bg: Colors.white),
+              Avatar(u.initials, url: u.avatarUrl, size: 64, bg: Colors.white),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -105,15 +108,103 @@ class ProfileView extends StatelessWidget {
     final model = TextEditingController(text: u.driver?.vehicle ?? '');
     final plate = TextEditingController(text: u.driver?.plate ?? '');
     final color = TextEditingController(text: u.driver?.vehicleColor ?? '');
+    File? pickedFile;
+
     await showDialog(
       context: context,
       builder: (ctx) {
         bool busy = false;
         return StatefulBuilder(builder: (ctx, setS) {
+          Future<void> pick(ImageSource source) async {
+            try {
+              final f = await ImagePicker().pickImage(source: source, maxWidth: 1000, maxHeight: 1000, imageQuality: 85);
+              if (f != null) {
+                setS(() => pickedFile = File(f.path));
+              }
+            } catch (e) {
+              if (ctx.mounted) showMsg(ctx, 'Gagal memilih gambar: $e', error: true);
+            }
+          }
+
+          void showImageSourceOptions() {
+            showModalBottomSheet(
+              context: ctx,
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+              builder: (bCtx) => SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Pilih Foto Profil', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      const SizedBox(height: 12),
+                      ListTile(
+                        leading: const Icon(Icons.camera_alt_rounded, color: AppColors.primary),
+                        title: const Text('Ambil dari Kamera', style: TextStyle(fontWeight: FontWeight.w600)),
+                        onTap: () {
+                          Navigator.pop(bCtx);
+                          pick(ImageSource.camera);
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.photo_library_rounded, color: AppColors.primary),
+                        title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.w600)),
+                        onTap: () {
+                          Navigator.pop(bCtx);
+                          pick(ImageSource.gallery);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+
           return AlertDialog(
             title: const Text('Edit Profil', style: TextStyle(fontWeight: FontWeight.w800)),
             content: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Center(
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      GestureDetector(
+                        onTap: showImageSourceOptions,
+                        child: Avatar(
+                          u.initials,
+                          url: u.avatarUrl,
+                          file: pickedFile,
+                          size: 88,
+                          bg: AppColors.primaryLight,
+                        ),
+                      ),
+                      Material(
+                        color: AppColors.primary,
+                        shape: const CircleBorder(),
+                        elevation: 2,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: showImageSourceOptions,
+                          child: const Padding(
+                            padding: EdgeInsets.all(7),
+                            child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: showImageSourceOptions,
+                  icon: const Icon(Icons.upload_rounded, size: 18),
+                  label: Text(
+                    pickedFile != null ? 'Ganti Foto Pilihan' : 'Upload Foto Profil',
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 TextField(controller: name, decoration: const InputDecoration(labelText: 'Nama lengkap')),
                 const SizedBox(height: 12),
                 TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Nomor HP')),
@@ -136,7 +227,7 @@ class ProfileView extends StatelessWidget {
                     : () async {
                         setS(() => busy = true);
                         try {
-                          final r = await Api.post('profile/update', body: {
+                          final fields = <String, String>{
                             'name': name.text.trim(),
                             'phone': phone.text.trim(),
                             if (showVehicleEdit && u.role == 'driver') ...{
@@ -144,10 +235,16 @@ class ProfileView extends StatelessWidget {
                               'plate_number': plate.text.trim(),
                               'vehicle_color': color.text.trim(),
                             },
-                          });
+                          };
+                          Map<String, dynamic> r;
+                          if (pickedFile != null) {
+                            r = await Api.multipart('profile/update', fields: fields, files: {'avatar': pickedFile!.path});
+                          } else {
+                            r = await Api.post('profile/update', body: fields);
+                          }
                           if (context.mounted) context.read<AuthProvider>().setUser(AppUser.fromJson(r['user']));
                           if (ctx.mounted) Navigator.pop(ctx);
-                          if (context.mounted) showMsg(context, 'Profil diperbarui');
+                          if (context.mounted) showMsg(context, 'Profil berhasil diperbarui');
                         } catch (e) {
                           setS(() => busy = false);
                           if (ctx.mounted) showError(ctx, e);

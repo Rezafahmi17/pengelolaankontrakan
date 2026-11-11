@@ -57,6 +57,7 @@ class AppUser {
   final String? npm;
   final String email;
   final String phone;
+  final String? avatarUrl;
   final String status; // active | blocked
   final String? blockedReason;
   final DriverInfo? driver;
@@ -68,6 +69,7 @@ class AppUser {
     this.npm,
     required this.email,
     required this.phone,
+    this.avatarUrl,
     required this.status,
     this.blockedReason,
     this.driver,
@@ -98,6 +100,7 @@ class AppUser {
         npm: j['npm'],
         email: j['email'] ?? '',
         phone: j['phone'] ?? '',
+        avatarUrl: j['avatar_url'],
         status: j['status'] ?? 'active',
         blockedReason: j['blocked_reason'],
         driver: j['driver'] is Map<String, dynamic> ? DriverInfo.fromJson(j['driver']) : null,
@@ -142,6 +145,7 @@ class DriverBrief {
   final int id;
   final String name;
   final String? phone;
+  final String? avatarUrl;
   final String? vehicle;
   final String? plate;
   final double ratingAvg;
@@ -151,6 +155,7 @@ class DriverBrief {
     required this.id,
     required this.name,
     this.phone,
+    this.avatarUrl,
     this.vehicle,
     this.plate,
     required this.ratingAvg,
@@ -164,6 +169,7 @@ class DriverBrief {
       id: _i(j['id']),
       name: j['name'] ?? '',
       phone: j['phone'],
+      avatarUrl: j['avatar_url'],
       vehicle: j['vehicle'],
       plate: j['plate_number'],
       ratingAvg: _d(j['rating_avg']),
@@ -179,6 +185,7 @@ class Order {
   final int customerId;
   final String customerName;
   final String? customerPhone;
+  final String? customerAvatarUrl;
   final int? driverId;
   final String pickupAddress;
   final LatLng pickup;
@@ -204,6 +211,7 @@ class Order {
     required this.customerId,
     required this.customerName,
     this.customerPhone,
+    this.customerAvatarUrl,
     this.driverId,
     required this.pickupAddress,
     required this.pickup,
@@ -247,6 +255,7 @@ class Order {
         customerId: _i(j['customer_id']),
         customerName: j['customer_name'] ?? '',
         customerPhone: j['customer_phone'],
+        customerAvatarUrl: j['customer_avatar_url'],
         driverId: j['driver_id'] == null ? null : _i(j['driver_id']),
         pickupAddress: j['pickup_address'] ?? '',
         pickup: LatLng(_d(j['pickup_lat']), _d(j['pickup_lng'])),

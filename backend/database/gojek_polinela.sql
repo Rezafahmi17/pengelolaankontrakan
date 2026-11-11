@@ -19,6 +19,7 @@ CREATE TABLE users (
   npm VARCHAR(30) NULL UNIQUE,
   email VARCHAR(150) NOT NULL UNIQUE,
   phone VARCHAR(25) NOT NULL,
+  avatar_url VARCHAR(255) NULL,
   password_hash VARCHAR(255) NOT NULL,
   api_token CHAR(64) NULL UNIQUE,
   token_expires_at DATETIME NULL,
