@@ -380,7 +380,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
   }
 
   Widget _header(CustomerController ctrl, bool planning, Order? active) {
-    final user = context.watch<AuthProvider>().user!;
+    final user = context.watch<AuthProvider>().user;
+    if (user == null) return const SizedBox.shrink();
     if (planning && active == null) {
       return Card(
         elevation: 4,
@@ -527,7 +528,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> with AutomaticK
         ctrl.dismissFinished();
       });
     } else if (active != null) {
-      key = 'act${active.isWaiting}';
+      key = 'act_${active.status}_${active.isPaid}';
       child = active.isWaiting ? _SearchingPanel(order: active, ctrl: ctrl) : _TrackingPanel(order: active);
     } else if (_dest != null) {
       key = 'plan';
@@ -871,16 +872,40 @@ class _TrackingPanel extends StatelessWidget {
   final Order order;
   const _TrackingPanel({required this.order});
 
-  int get _step => switch (order.status) { 'accepted' => 0, 'heading_pickup' => 1, 'picked_up' || 'in_trip' => 2, _ => 0 };
-
-  String get _headline => switch (order.status) {
-        'accepted' => 'Driver menerima pesanan',
-        'heading_pickup' => 'Driver menuju lokasi Anda',
-        'picked_up' || 'in_trip' => 'Dalam perjalanan ke tujuan',
-        _ => order.statusLabel,
+  int get _step => switch (order.status) {
+        'accepted' => 0,
+        'heading_pickup' => 1,
+        'picked_up' || 'in_trip' => 2,
+        'completed' => 3,
+        _ => 0,
       };
 
+  String get _headline {
+    if (order.isAwaitingPayment) {
+      return order.isQris
+          ? 'Menunggu Konfirmasi QRIS Driver'
+          : 'Menunggu Konfirmasi Driver';
+    }
+    return switch (order.status) {
+      'accepted' => 'Driver menerima pesanan',
+      'heading_pickup' => 'Driver menuju lokasi Anda',
+      'picked_up' || 'in_trip' => 'Dalam perjalanan ke tujuan',
+      'completed' => 'Perjalanan Selesai',
+      _ => order.statusLabel,
+    };
+  }
+
+  String get _subhead {
+    if (order.isAwaitingPayment) {
+      return order.isQris
+          ? 'Silakan tunjukkan/scan bukti QRIS ke driver'
+          : 'Silakan serahkan uang tunai ke driver';
+    }
+    return order.toPickup ? 'Menjemput Anda' : 'Menuju tujuan';
+  }
+
   int? get _eta {
+    if (order.isAwaitingPayment) return null;
     final d = order.driver?.location;
     if (d == null) return null;
     final target = order.toPickup ? order.pickup : order.dest;
@@ -903,20 +928,73 @@ class _TrackingPanel extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(color: order.statusColor.withValues(alpha: 0.12), shape: BoxShape.circle),
-          child: Icon(order.toPickup ? Icons.two_wheeler_rounded : Icons.flag_rounded, color: order.statusColor),
+          child: Icon(
+            order.isAwaitingPayment
+                ? (order.isQris ? Icons.qr_code_2_rounded : Icons.payments_rounded)
+                : (order.toPickup ? Icons.two_wheeler_rounded : Icons.flag_rounded),
+            color: order.statusColor,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_headline, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            Text(order.toPickup ? 'Menjemput Anda' : 'Menuju tujuan', style: const TextStyle(color: AppColors.grey, fontSize: 12.5)),
+            Text(_headline, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800)),
+            Text(_subhead, style: const TextStyle(color: AppColors.grey, fontSize: 12.5)),
           ]),
         ),
-        if (eta != null) StatusChip('±$eta mnt', AppColors.info, icon: Icons.schedule_rounded),
+        if (eta != null && !order.isAwaitingPayment) StatusChip('±$eta mnt', AppColors.info, icon: Icons.schedule_rounded),
+        if (order.isAwaitingPayment)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.warning),
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Menunggu Driver',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.warning),
+                ),
+              ],
+            ),
+          ),
       ]),
       const SizedBox(height: 14),
       _Steps(current: _step),
       const SizedBox(height: 14),
+      if (order.isAwaitingPayment) ...[
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.hourglass_top_rounded, color: AppColors.warning, size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  order.isQris
+                      ? 'Anda telah tiba di tujuan! Silakan scan barcode QRIS di bawah ini. Status pesanan akan selesai setelah dikonfirmasi oleh driver.'
+                      : 'Anda telah tiba di tujuan! Silakan serahkan uang tunai sebesar ${Fmt.rupiah(order.totalFare)} kepada driver. Status pesanan akan selesai setelah dikonfirmasi oleh driver.',
+                  style: const TextStyle(fontSize: 12.5, height: 1.35, fontWeight: FontWeight.w600, color: Color(0xFF7A4E00)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
       if (d != null)
         Container(
           padding: const EdgeInsets.all(12),
@@ -1072,21 +1150,30 @@ class _FinishedPanelState extends State<_FinishedPanel> {
       const Icon(Icons.check_circle_rounded, size: 52, color: AppColors.success),
       const SizedBox(height: 6),
       const Text('Perjalanan selesai!', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 4),
+      Text(
+        'Pembayaran ${o.paymentMethodLabel} sebesar ${Fmt.rupiah(o.totalFare)} telah dikonfirmasi driver.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: AppColors.grey, fontSize: 12.5),
+      ),
       const SizedBox(height: 10),
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(16)),
         child: Column(children: [
-          Text(o.isQris ? 'Metode pembayaran: QRIS' : 'Bayar tunai kepada driver', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12.5)),
-          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_circle_rounded, size: 16, color: AppColors.success),
+              const SizedBox(width: 6),
+              Text('Pembayaran ${o.paymentMethodLabel} Lunas', style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w700, fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 4),
           Text(Fmt.rupiah(o.totalFare), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.primaryDark)),
-          Text('${Fmt.km(o.distanceKm)} • ${o.code} • ${o.paymentMethodLabel}', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12)),
+          Text('${Fmt.km(o.distanceKm)} • ${o.code}', style: const TextStyle(color: AppColors.primaryDark, fontSize: 12)),
         ]),
       ),
-      if (o.isQris) ...[
-        const SizedBox(height: 10),
-        _QrisPaymentCard(order: o),
-      ],
       const SizedBox(height: 14),
       Text('Beri nilai untuk ${o.driver?.name ?? 'driver'}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
       const SizedBox(height: 6),

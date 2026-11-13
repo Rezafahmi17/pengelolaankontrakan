@@ -9,7 +9,7 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Auth-Token');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
-
+ 
 // Tabel rute: [METHOD, pola, handler]
 $routes = [
     ['GET',  'ping', 'h_ping'],
@@ -22,6 +22,9 @@ $routes = [
     ['POST', 'profile/update', 'h_update_profile'],
     ['POST', 'profile/password', 'h_change_password'],
     ['GET',  'avatars/{file}', 'h_avatar'],
+    ['GET',  'qris/{file}', 'h_qris_file'],
+    ['GET',  'payments/{file}', 'h_payments_file'],
+    ['GET',  'docs/{file}', 'h_docs_file'],
     ['GET',  'uploads/{folder}/{file}', 'h_serve_file'],
     ['GET',  'notifications', 'h_notifications'],
     ['POST', 'notifications/read', 'h_notifications_read'],
@@ -91,7 +94,7 @@ try {
     foreach ($routes as [$m, $pattern, $handler]) {
         $regex = '#^' . preg_replace_callback('#\{(\w+)\}#', fn($match) => $match[1] === 'id' ? '(?P<id>[0-9]+)' : '(?P<' . $match[1] . '>[a-zA-Z0-9_.-]+)', $pattern) . '$#';
         if (preg_match($regex, $path, $matches)) {
-            if ($m !== $method) { $methodMatched = true; continue; }
+            if ($m !== $method && !($m === 'GET' && $method === 'HEAD')) { $methodMatched = true; continue; }
             $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
             (new ReflectionFunction($handler))->getNumberOfParameters() > 0 ? $handler($params) : $handler();
             exit;

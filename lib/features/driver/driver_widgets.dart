@@ -228,7 +228,7 @@ class DriverOrderCard extends StatelessWidget {
     final ctrl = context.read<DriverController>();
     final o = order;
 
-    if (o.isCompleted && !o.isPaid) {
+    if (o.isAwaitingPayment) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
         Icon(o.isQris ? Icons.qr_code_2_rounded : Icons.payments_rounded, size: 46, color: AppColors.success),
         const SizedBox(height: 8),

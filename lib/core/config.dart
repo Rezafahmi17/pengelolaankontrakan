@@ -6,9 +6,11 @@ class AppConfig {
 
   /// Alamat API backend (XAMPP).
   /// - Emulator Android Studio : http://10.0.2.2/gojek_polinela/api/index.php
-  /// - HP asli (satu Wi-Fi)    : http://IP-LAPTOP/gojek_polinela/api/index.php
-  /// Dapat diubah dari dalam aplikasi (ikon pengaturan server di halaman login).
-  static const String defaultBaseUrl = 'http://10.0.2.2/gojek_polinela/api/index.php';
+  /// - HP asli (satu Wi-Fi)    : http://192.168.18.11/gojek_polinela/api/index.php
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'API_URL',
+    defaultValue: 'http://192.168.18.11/gojek_polinela/api/index.php',
+  );
   static String baseUrl = defaultBaseUrl;
 
   /// Google Maps API key (untuk Directions API / rute & jarak).

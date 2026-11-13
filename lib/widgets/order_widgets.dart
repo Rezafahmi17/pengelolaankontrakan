@@ -92,11 +92,27 @@ class _OrderDetailState extends State<_OrderDetail> {
   int _stars = 5;
   final _comment = TextEditingController();
   bool _rating = false;
+  bool _confirming = false;
 
   @override
   void dispose() {
     _comment.dispose();
     super.dispose();
+  }
+
+  Future<void> _confirmPayment(Order o) async {
+    setState(() => _confirming = true);
+    try {
+      await Api.post('orders/${o.id}/payment');
+      if (!mounted) return;
+      showMsg(context, o.isQris ? 'Pembayaran QRIS berhasil dikonfirmasi!' : 'Pembayaran tunai berhasil dikonfirmasi!');
+      widget.onChanged?.call();
+      setState(() => _f = Api.get('orders/${widget.orderId}'));
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _confirming = false);
+    }
   }
 
   Future<void> _rate(Order o) async {
@@ -153,6 +169,49 @@ class _OrderDetailState extends State<_OrderDetail> {
               Text(Fmt.rupiah(o.totalFare), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: AppColors.primary)),
             ]),
           ),
+          if (widget.perspective == 'driver' && o.isAwaitingPayment) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Icon(o.isQris ? Icons.qr_code_2_rounded : Icons.payments_rounded, color: AppColors.primaryDark),
+                    const SizedBox(width: 8),
+                    Text(
+                      o.isQris ? 'Periksa Pembayaran QRIS' : 'Terima Pembayaran Tunai',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.primaryDark),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(
+                    o.isQris
+                        ? 'Pastikan customer sudah scan QRIS dan saldo masuk sebesar ${Fmt.rupiah(o.totalFare)}.'
+                        : 'Terima uang tunai dari customer sebesar ${Fmt.rupiah(o.totalFare)}.',
+                    style: const TextStyle(fontSize: 13, color: AppColors.grey),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    onPressed: _confirming ? null : () => _confirmPayment(o),
+                    icon: _confirming
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.check_circle_rounded),
+                    label: Text(o.isQris ? 'Konfirmasi QRIS Diterima' : 'Konfirmasi Tunai Diterima'),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (o.history.isNotEmpty) ...[
             const SectionTitle('Riwayat status'),
             for (var i = 0; i < o.history.length; i++) _timelineRow(o.history[i], i == o.history.length - 1),

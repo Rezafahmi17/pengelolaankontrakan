@@ -695,14 +695,54 @@ class _PayFeeSheetState extends State<_PayFeeSheet> {
                         ),
                         child: Column(
                           children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.success.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.verified_rounded, size: 14, color: AppColors.success),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'QRIS Resmi Super Admin',
+                                    style: TextStyle(color: AppColors.success, fontSize: 11.5, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.network(
-                                Api.resolveUrl(adminQris),
-                                width: 170,
-                                height: 170,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.qr_code_2_rounded, size: 100, color: AppColors.grey),
+                              child: Container(
+                                color: Colors.white,
+                                padding: const EdgeInsets.all(8),
+                                child: Image.network(
+                                  Api.resolveUrl(adminQris),
+                                  width: 170,
+                                  height: 170,
+                                  fit: BoxFit.contain,
+                                  loadingBuilder: (ctx, child, progress) {
+                                    if (progress == null) return child;
+                                    return const SizedBox(
+                                      width: 170,
+                                      height: 170,
+                                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                    );
+                                  },
+                                  errorBuilder: (_, __, ___) => const Padding(
+                                    padding: EdgeInsets.all(24),
+                                    child: Column(
+                                      children: [
+                                        Icon(Icons.broken_image_rounded, size: 48, color: AppColors.danger),
+                                        SizedBox(height: 4),
+                                        Text('Gagal memuat barcode QRIS', style: TextStyle(color: AppColors.danger, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 6),

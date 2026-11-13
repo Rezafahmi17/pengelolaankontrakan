@@ -12,10 +12,6 @@ class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key, this.onNavigate});
 
   void _openProfile(BuildContext context) {
-    if (onNavigate != null) {
-      onNavigate?.call(4);
-      return;
-    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

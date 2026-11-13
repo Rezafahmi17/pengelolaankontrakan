@@ -58,7 +58,7 @@ class ProfileView extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Column(children: [
-                if (u.npm != null && u.npm!.isNotEmpty) InfoRow(Icons.badge_outlined, 'NPM', u.npm!),
+                if ((u.npm ?? '').trim().isNotEmpty) InfoRow(Icons.badge_outlined, 'NPM', u.npm ?? ''),
                 InfoRow(Icons.alternate_email_rounded, 'Email', u.email),
                 InfoRow(Icons.phone_android_rounded, 'Nomor HP', u.phone),
               ]),

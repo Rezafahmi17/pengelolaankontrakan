@@ -79,15 +79,27 @@ class AppUser {
   });
 
   bool get isBlocked => status == 'blocked';
-  bool get isAdmin => role == 'admin' || role == 'super_admin';
-  bool get isSuperAdmin => role == 'super_admin';
+  bool get isAdmin =>
+      role == 'admin' || role == 'super_admin' || role == 'superadmin';
+  bool get isSuperAdmin =>
+      role == 'super_admin' || role == 'superadmin';
 
-  String get roleLabel => const {
-        'customer': 'Customer',
-        'driver': 'Driver',
-        'admin': 'Admin',
-        'super_admin': 'Super Admin',
-      }[role]!;
+  String get roleLabel {
+    final r = role.toLowerCase().replaceAll('-', '_').trim();
+    switch (r) {
+      case 'customer':
+        return 'Customer';
+      case 'driver':
+        return 'Driver';
+      case 'admin':
+        return 'Admin';
+      case 'super_admin':
+      case 'superadmin':
+        return 'Super Admin';
+      default:
+        return role.isNotEmpty ? role : 'Pengguna';
+    }
+  }
 
   String get initials {
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -98,14 +110,14 @@ class AppUser {
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
         id: _i(j['id']),
-        role: j['role'],
-        name: j['name'] ?? '',
-        npm: j['npm'],
-        email: j['email'] ?? '',
-        phone: j['phone'] ?? '',
-        avatarUrl: j['avatar_url'],
-        status: j['status'] ?? 'active',
-        blockedReason: j['blocked_reason'],
+        role: (j['role'] ?? 'customer').toString(),
+        name: (j['name'] ?? '').toString(),
+        npm: j['npm']?.toString(),
+        email: (j['email'] ?? '').toString(),
+        phone: (j['phone'] ?? '').toString(),
+        avatarUrl: j['avatar_url']?.toString(),
+        status: (j['status'] ?? 'active').toString(),
+        blockedReason: j['blocked_reason']?.toString(),
         driver: j['driver'] is Map<String, dynamic> ? DriverInfo.fromJson(j['driver']) : null,
       );
 }
@@ -239,23 +251,27 @@ class Order {
   });
 
   static const activeStatuses = {'waiting', 'accepted', 'heading_pickup', 'picked_up', 'in_trip'};
-  bool get isActive => activeStatuses.contains(status);
-  bool get isWaiting => status == 'waiting';
-  bool get isCompleted => status == 'completed';
-  bool get isCancelled => status == 'cancelled_customer' || status == 'cancelled_driver' || status == 'no_driver';
   bool get isPaid => paymentStatus == 'paid';
+  bool get isAwaitingPayment => status == 'completed' && !isPaid;
+  bool get isActive => activeStatuses.contains(status) || isAwaitingPayment;
+  bool get isWaiting => status == 'waiting';
+  bool get isCompleted => status == 'completed' && isPaid;
+  bool get isCancelled => status == 'cancelled_customer' || status == 'cancelled_driver' || status == 'no_driver';
   bool get isQris => paymentMethod.toLowerCase() == 'qris';
   String get paymentMethodLabel => isQris ? 'QRIS' : 'Tunai';
   bool get toPickup => status == 'accepted' || status == 'heading_pickup';
   bool get inTrip => status == 'in_trip' || status == 'picked_up';
 
-  Color get statusColor => switch (status) {
-        'waiting' => AppColors.warning,
-        'accepted' || 'heading_pickup' => AppColors.info,
-        'picked_up' || 'in_trip' => AppColors.primary,
-        'completed' => AppColors.success,
-        _ => AppColors.danger,
-      };
+  Color get statusColor {
+    if (isAwaitingPayment) return AppColors.warning;
+    return switch (status) {
+      'waiting' => AppColors.warning,
+      'accepted' || 'heading_pickup' => AppColors.info,
+      'picked_up' || 'in_trip' => AppColors.primary,
+      'completed' => AppColors.success,
+      _ => AppColors.danger,
+    };
+  }
 
   factory Order.fromJson(Map<String, dynamic> j) => Order(
         id: _i(j['id']),

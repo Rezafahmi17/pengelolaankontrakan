@@ -222,10 +222,11 @@ class DriverController extends ChangeNotifier {
     await _loop();
   }
 
-  Future<void> confirmPayment() async {
+  Future<void> confirmPayment([int? orderId]) async {
     final a = active;
-    if (a == null) return;
-    await Api.post('orders/${a.id}/payment');
+    final id = orderId ?? a?.id;
+    if (id == null) return;
+    await Api.post('orders/$id/payment');
     await _loop();
     await auth.refreshUser();
     await loadSummary();

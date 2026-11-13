@@ -35,7 +35,10 @@ function h_order_create(): void {
     if ($km < $line * 0.9) $km = round($line, 2); // jarak rute tidak mungkin lebih pendek dari garis lurus
 
     expire_stale_orders();
-    $existing = scalar("SELECT id FROM orders WHERE customer_id = ? AND status IN (" . ACTIVE_STATUSES . ") LIMIT 1", [$u['id']]);
+    $existing = scalar("SELECT o.id FROM orders o LEFT JOIN payments p ON p.order_id = o.id
+                        WHERE o.customer_id = ? AND (o.status IN (" . ACTIVE_STATUSES . ")
+                           OR (o.status = 'completed' AND p.status = 'pending'))
+                        LIMIT 1", [$u['id']]);
     if ($existing) throw new ApiException('Anda masih memiliki pesanan yang sedang berlangsung', 409, ['order_id' => (int) $existing]);
 
     $t = tariff();
@@ -96,7 +99,10 @@ function h_order_active(): void {
     $u = require_role('customer', 'driver');
     expire_stale_orders();
     if ($u['role'] === 'customer') {
-        $id = scalar("SELECT id FROM orders WHERE customer_id = ? AND status IN (" . ACTIVE_STATUSES . ") ORDER BY id DESC LIMIT 1", [$u['id']]);
+        $id = scalar("SELECT o.id FROM orders o LEFT JOIN payments p ON p.order_id = o.id
+                      WHERE o.customer_id = ? AND (o.status IN ('waiting','accepted','heading_pickup','picked_up','in_trip')
+                         OR (o.status = 'completed' AND p.status = 'pending'))
+                      ORDER BY o.id DESC LIMIT 1", [$u['id']]);
     } else {
         $id = scalar("SELECT o.id FROM orders o LEFT JOIN payments p ON p.order_id = o.id
                       WHERE o.driver_id = ? AND (o.status IN ('accepted','heading_pickup','picked_up','in_trip')
@@ -255,8 +261,13 @@ function h_order_advance(array $p): void {
         case 'complete':
             if ($s !== 'in_trip') throw new ApiException('Perjalanan belum dimulai', 409);
             q("UPDATE orders SET status = 'completed', completed_at = NOW() WHERE id = ?", [$id]);
-            order_history($id, 'completed', 'Perjalanan selesai', (int) $u['id']);
-            notify($cust, 'Perjalanan selesai', 'Silakan bayar tunai Rp ' . number_format((int) $o['total_fare'], 0, ',', '.') . ' kepada driver.', 'order', $id);
+            order_history($id, 'completed', 'Tiba di tujuan, menunggu konfirmasi pembayaran', (int) $u['id']);
+            $isQris = strtolower((string)($o['payment_method'] ?? 'cash')) === 'qris';
+            $fareStr = number_format((int) $o['total_fare'], 0, ',', '.');
+            $msg = $isQris
+                ? "Tiba di tujuan. Silakan scan/bayar QRIS Rp $fareStr dan tunggu konfirmasi driver."
+                : "Tiba di tujuan. Silakan bayar tunai Rp $fareStr dan tunggu konfirmasi driver.";
+            notify($cust, 'Tiba di Tujuan', $msg, 'order', $id);
             break;
         default:
             throw new ApiException('Aksi tidak dikenal', 422);
@@ -271,8 +282,9 @@ function h_order_confirm_payment(array $p): void {
     if ($o['status'] !== 'completed') throw new ApiException('Perjalanan belum selesai', 409);
     q("UPDATE payments SET status = 'paid', paid_at = NOW(), confirmed_by = ? WHERE order_id = ? AND status = 'pending'", [$u['id'], $id]);
     q('UPDATE driver_profiles SET is_busy = 0 WHERE user_id = ?', [$u['id']]);
-    notify((int) $o['customer_id'], 'Pembayaran diterima', 'Terima kasih! Beri rating untuk driver Anda.', 'payment', $id);
-    ok(['order' => order_full($id)], 'Pembayaran tunai dikonfirmasi');
+    order_history($id, 'payment_confirmed', 'Pembayaran dikonfirmasi driver. Perjalanan selesai.', (int) $u['id']);
+    notify((int) $o['customer_id'], 'Pembayaran Dikonfirmasi', 'Driver telah mengkonfirmasi pembayaran Anda. Perjalanan selesai! Silakan beri penilaian.', 'payment', $id);
+    ok(['order' => order_full($id)], 'Pembayaran berhasil dikonfirmasi');
 }
 
 function h_order_driver_cancel(array $p): void {

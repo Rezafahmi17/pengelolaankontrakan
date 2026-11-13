@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth_provider.dart';
+import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../widgets/common.dart';
 import 'register_screen.dart';
@@ -28,6 +29,66 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) showError(context, e);
     }
+  }
+
+  void _showServerDialog() {
+    final cur = AppConfig.baseUrl;
+    final c = TextEditingController(text: cur);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pengaturan IP Server', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Masukkan alamat API backend di laptop Anda (pastikan satu Wi-Fi):',
+              style: TextStyle(fontSize: 13, color: AppColors.grey),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: c,
+              decoration: const InputDecoration(
+                labelText: 'URL Server / IP Laptop',
+                hintText: 'http://192.168.18.11/gojek_polinela/api/index.php',
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              children: [
+                ActionChip(
+                  label: const Text('IP Wi-Fi Laptop Ini', style: TextStyle(fontSize: 11)),
+                  onPressed: () => c.text = 'http://192.168.18.11/gojek_polinela/api/index.php',
+                ),
+                ActionChip(
+                  label: const Text('Emulator (10.0.2.2)', style: TextStyle(fontSize: 11)),
+                  onPressed: () => c.text = 'http://10.0.2.2/gojek_polinela/api/index.php',
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          FilledButton(
+            onPressed: () async {
+              final val = c.text.trim();
+              if (val.isNotEmpty) {
+                await context.read<AuthProvider>().setBaseUrl(val);
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  showMsg(context, 'Alamat server berhasil diperbarui');
+                  context.read<AuthProvider>().init();
+                }
+              }
+            },
+            child: const Text('Simpan & Hubungkan'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -78,8 +139,11 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 children: [
                   const SizedBox(height: 14),
-                  // Rider Logo
-                  const AppLogo(size: 88, light: true),
+                  // Rider Logo (Tekan lama untuk Pengaturan IP Server)
+                  GestureDetector(
+                    onLongPress: _showServerDialog,
+                    child: const AppLogo(size: 88, light: true),
+                  ),
                   const SizedBox(height: 12),
                   // JEKPOL Brand Name
                   const Text(
@@ -147,14 +211,32 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: AppColors.danger.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(14),
                                 ),
-                                child: Row(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.wifi_off_rounded, color: AppColors.danger, size: 20),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        startupError,
-                                        style: const TextStyle(color: AppColors.danger, fontSize: 12.5),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.wifi_off_rounded, color: AppColors.danger, size: 20),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            startupError,
+                                            style: const TextStyle(color: AppColors.danger, fontSize: 12.5),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton.icon(
+                                        style: TextButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          foregroundColor: AppColors.primary,
+                                        ),
+                                        onPressed: _showServerDialog,
+                                        icon: const Icon(Icons.settings_rounded, size: 16),
+                                        label: const Text('Ganti IP Server', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                                       ),
                                     ),
                                   ],

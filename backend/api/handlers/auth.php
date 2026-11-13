@@ -190,6 +190,18 @@ function h_serve_file(array $p): void {
     exit;
 }
 
+function h_qris_file(array $p): void {
+    h_serve_file(['folder' => 'qris', 'file' => $p['file']]);
+}
+
+function h_payments_file(array $p): void {
+    h_serve_file(['folder' => 'payments', 'file' => $p['file']]);
+}
+
+function h_docs_file(array $p): void {
+    h_serve_file(['folder' => 'docs', 'file' => $p['file']]);
+}
+
 function h_avatar(array $p): void {
     $file = basename($p['file'] ?? '');
     if ($file === '') throw new ApiException('File tidak valid', 400);

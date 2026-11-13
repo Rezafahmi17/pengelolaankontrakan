@@ -211,23 +211,79 @@ class _AdminFeePaymentsScreenState extends State<AdminFeePaymentsScreen> {
                         ),
                         child: Column(
                           children: [
-                            if (newQris != null)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.file(newQris!, width: 160, height: 160, fit: BoxFit.contain),
-                              )
-                            else if (currentQris.isNotEmpty)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.network(
-                                  Api.resolveUrl(currentQris),
-                                  width: 160,
-                                  height: 160,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => const Icon(Icons.qr_code_2_rounded, size: 80, color: AppColors.grey),
+                            if (newQris != null) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.warning.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                              )
-                            else
+                                child: const Text(
+                                  'Foto Baru Dipilih (Belum Disimpan)',
+                                  style: TextStyle(color: AppColors.warning, fontSize: 11.5, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  color: Colors.white,
+                                  padding: const EdgeInsets.all(6),
+                                  child: Image.file(newQris!, width: 170, height: 170, fit: BoxFit.contain),
+                                ),
+                              ),
+                            ] else if (currentQris.isNotEmpty) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Barcode QRIS Aktif di Sistem',
+                                      style: TextStyle(color: AppColors.success, fontSize: 11.5, fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  color: Colors.white,
+                                  padding: const EdgeInsets.all(6),
+                                  child: Image.network(
+                                    Api.resolveUrl(currentQris),
+                                    width: 170,
+                                    height: 170,
+                                    fit: BoxFit.contain,
+                                    loadingBuilder: (ctx, child, progress) {
+                                      if (progress == null) return child;
+                                      return const SizedBox(
+                                        width: 170,
+                                        height: 170,
+                                        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                      );
+                                    },
+                                    errorBuilder: (_, __, ___) => const Padding(
+                                      padding: EdgeInsets.all(24),
+                                      child: Column(
+                                        children: [
+                                          Icon(Icons.broken_image_rounded, size: 48, color: AppColors.danger),
+                                          SizedBox(height: 4),
+                                          Text('Gagal memuat gambar', style: TextStyle(color: AppColors.danger, fontSize: 11)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ] else
                               const Padding(
                                 padding: EdgeInsets.all(24),
                                 child: Column(
@@ -238,7 +294,7 @@ class _AdminFeePaymentsScreenState extends State<AdminFeePaymentsScreen> {
                                   ],
                                 ),
                               ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             OutlinedButton.icon(
                               onPressed: () async {
                                 final f = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1200, maxHeight: 1200, imageQuality: 85);

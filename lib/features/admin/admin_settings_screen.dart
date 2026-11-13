@@ -140,6 +140,11 @@ class _TariffAndSettingsTabState extends State<_TariffAndSettingsTab> {
         final base = (t['base_fare'] as num).toInt();
         final perKm = (t['per_km_rate'] as num).toInt();
         final settings = (data['settings'] as List).cast<Map>();
+        final penaltySettings = settings.where((s) => s['key'] != 'admin_qris_url' && s['key'] != 'withdrawal_fee').toList();
+        final qrisSetting = settings.firstWhere((s) => s['key'] == 'admin_qris_url', orElse: () => {});
+        final feeSetting = settings.firstWhere((s) => s['key'] == 'withdrawal_fee', orElse: () => {});
+        final qrisUrl = (qrisSetting['value'] ?? '').toString();
+        final feeAmount = int.tryParse((feeSetting['value'] ?? '1000').toString()) ?? 1000;
 
         return ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -164,17 +169,40 @@ class _TariffAndSettingsTabState extends State<_TariffAndSettingsTab> {
             const SectionTitle('Sistem Penalti & Batas Ambang'),
             Card(
               child: Column(children: [
-                for (final s in settings)
+                for (int i = 0; i < penaltySettings.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
-                    title: Text('${s['description'] ?? s['key']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                    subtitle: Text('Parameter: ${s['key']}'),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text('${s['value']}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppColors.primary)),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.edit_rounded, size: 18, color: AppColors.grey),
-                    ]),
-                    onTap: () => _editSetting(s['key'], '${s['value']}', '${s['description'] ?? s['key']}'),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    title: Text(
+                      '${penaltySettings[i]['description'] ?? penaltySettings[i]['key']}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('Parameter: ${penaltySettings[i]['key']}', style: const TextStyle(fontSize: 12, color: AppColors.grey)),
+                    ),
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(
+                          '${penaltySettings[i]['value']}',
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppColors.primaryDark),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.edit_rounded, size: 16, color: AppColors.primaryDark),
+                      ]),
+                    ),
+                    onTap: () => _editSetting(
+                      penaltySettings[i]['key'],
+                      '${penaltySettings[i]['value']}',
+                      '${penaltySettings[i]['description'] ?? penaltySettings[i]['key']}',
+                    ),
                   ),
+                ],
               ]),
             ),
             const SectionTitle('Setoran Driver & QRIS Super Admin'),
@@ -184,18 +212,82 @@ class _TariffAndSettingsTabState extends State<_TariffAndSettingsTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Biaya potongan aplikasi yang wajib disetorkan oleh driver per transaksi selesai dengan menggunakan QRIS Super Admin.',
-                      style: TextStyle(color: AppColors.grey, fontSize: 12.5),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.payments_rounded, color: AppColors.primaryDark, size: 24),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Biaya Aplikasi per Trip', style: TextStyle(color: AppColors.grey, fontSize: 12)),
+                              Text(
+                                Fmt.rupiah(feeAmount),
+                                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primaryDark),
+                              ),
+                            ],
+                          ),
+                        ),
+                        StatusChip(
+                          qrisUrl.isNotEmpty ? 'QRIS Aktif' : 'Belum Ada QRIS',
+                          qrisUrl.isNotEmpty ? AppColors.success : AppColors.warning,
+                          icon: qrisUrl.isNotEmpty ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+                    if (qrisUrl.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.greyLight),
+                        ),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                Api.resolveUrl(qrisUrl),
+                                width: 50,
+                                height: 50,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(Icons.qr_code_2_rounded, size: 36, color: AppColors.grey),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Barcode QRIS Resmi Siap', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                                  Text('Ditampilkan kepada driver saat setor biaya.', style: TextStyle(color: AppColors.grey, fontSize: 11.5)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     FilledButton.icon(
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFeePaymentsScreen())),
+                      onPressed: () async {
+                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminFeePaymentsScreen()));
+                        _key.currentState?.reload();
+                      },
                       icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
                       label: const Text('Buka Monitoring Setoran & Kelola QRIS', style: TextStyle(fontWeight: FontWeight.w700)),
                     ),

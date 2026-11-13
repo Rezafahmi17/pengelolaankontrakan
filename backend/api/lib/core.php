@@ -150,7 +150,10 @@ function make_order_code(): string {
     } while (scalar('SELECT 1 FROM orders WHERE order_code = ?', [$code]));
     return $code;
 }
-function status_label(string $s): string {
+function status_label(string $s, string $paymentStatus = 'pending'): string {
+    if ($s === 'completed' && $paymentStatus === 'pending') {
+        return 'Menunggu Konfirmasi Pembayaran';
+    }
     return [
         'waiting' => 'Menunggu', 'accepted' => 'Diterima', 'heading_pickup' => 'Menuju Penjemputan',
         'picked_up' => 'Dijemput', 'in_trip' => 'Dalam Perjalanan', 'completed' => 'Selesai',
@@ -220,9 +223,9 @@ function shape_order(array $o): array {
     foreach (['id', 'customer_id', 'driver_id', 'duration_min', 'base_fare', 'per_km_rate', 'total_fare'] as $k)
         if (isset($o[$k])) $o[$k] = (int) $o[$k];
     foreach (['pickup_lat', 'pickup_lng', 'dest_lat', 'dest_lng', 'distance_km'] as $k) $o[$k] = (float) $o[$k];
-    $o['status_label'] = status_label($o['status']);
-    $o['rated'] = !empty($o['rated']);
     $o['payment_status'] = $o['payment_status'] ?? 'pending';
+    $o['status_label'] = status_label($o['status'], $o['payment_status']);
+    $o['rated'] = !empty($o['rated']);
     $o['customer_avatar_url'] = $o['customer_avatar_url'] ?? null;
     $o['driver'] = null;
     if (!empty($o['driver_id'])) {
