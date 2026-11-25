@@ -22,8 +22,22 @@ function db(): PDO {
             PDO::ATTR_EMULATE_PREPARES => false,
         ]);
         $pdo->exec("SET time_zone = '" . DB_TIMEZONE_OFFSET . "'");
+        ensure_schema($pdo);
     }
     return $pdo;
+}
+function ensure_schema(PDO $pdo): void {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $col = $pdo->query("SHOW COLUMNS FROM orders LIKE 'offered_driver_id'")->fetch();
+        if (!$col) {
+            $pdo->exec("ALTER TABLE orders ADD COLUMN offered_driver_id INT UNSIGNED NULL AFTER driver_id, ADD COLUMN offered_at DATETIME NULL AFTER offered_driver_id");
+        }
+    } catch (Throwable $e) {
+        // abaikan jika kolom sudah ada
+    }
 }
 function q(string $sql, array $params = []): PDOStatement {
     $st = db()->prepare($sql);
@@ -246,15 +260,118 @@ function shape_order(array $o): array {
     return $o;
 }
 
+/** Sinkronisasi flag is_busy driver agar selalu akurat dengan pesanan yang belum selesai/belum dibayar. */
+function sync_driver_busy_flags(): void {
+    q("UPDATE driver_profiles dp
+       SET dp.is_busy = CASE
+           WHEN EXISTS (
+               SELECT 1 FROM orders o
+               LEFT JOIN payments p ON p.order_id = o.id
+               WHERE o.driver_id = dp.user_id
+                 AND (o.status IN ('accepted','heading_pickup','picked_up','in_trip')
+                      OR (o.status = 'completed' AND COALESCE(p.status, 'pending') = 'pending'))
+           ) THEN 1
+           ELSE 0
+       END");
+}
+
+/**
+ * Distribusi pesanan waiting secara ACAK (Random Single-Driver Dispatch) & Anti-Penumpukan:
+ * - Setiap pesanan waiting hanya ditawarkan ke 1 driver online yang sedang bebas (tidak punya order aktif & tidak sedang ditawari order lain).
+ * - Jika ada banyak pesanan & banyak driver online, masing-masing pesanan dibagi merata secara acak (1 driver = maks 1 tawaran/pesanan).
+ */
+function assign_waiting_orders(): void {
+    sync_driver_busy_flags();
+
+    // 1. Lepaskan offered_driver_id jika driver tersebut tidak lagi memenuhi syarat (offline, sibuk, diblokir, atau sudah menolak)
+    q("UPDATE orders o
+       LEFT JOIN driver_profiles dp ON dp.user_id = o.offered_driver_id
+       LEFT JOIN users u ON u.id = o.offered_driver_id
+       SET o.offered_driver_id = NULL, o.offered_at = NULL
+       WHERE o.status = 'waiting'
+         AND o.offered_driver_id IS NOT NULL
+         AND (
+             dp.user_id IS NULL
+             OR dp.is_online = 0
+             OR dp.is_busy = 1
+             OR dp.verification_status <> 'approved'
+             OR u.status <> 'active'
+             OR EXISTS (
+                 SELECT 1 FROM order_rejections r
+                 WHERE r.order_id = o.id AND r.driver_id = o.offered_driver_id
+             )
+         )");
+
+    // 2. Pastikan 1 driver tidak pernah memegang lebih dari 1 waiting order sekaligus (anti-penumpukan)
+    $dups = rows("SELECT offered_driver_id, MIN(id) AS keep_id
+                  FROM orders
+                  WHERE status = 'waiting' AND offered_driver_id IS NOT NULL
+                  GROUP BY offered_driver_id
+                  HAVING COUNT(*) > 1");
+    foreach ($dups as $d) {
+        q("UPDATE orders SET offered_driver_id = NULL, offered_at = NULL
+           WHERE status = 'waiting' AND offered_driver_id = ? AND id <> ?",
+           [$d['offered_driver_id'], $d['keep_id']]);
+    }
+
+    // 3. Distribusikan setiap pesanan waiting yang belum punya offered_driver_id ke 1 driver online bebas secara ACAK
+    $unassigned = rows("SELECT id, pickup_address, dest_address
+                        FROM orders
+                        WHERE status = 'waiting'
+                          AND driver_id IS NULL
+                          AND offered_driver_id IS NULL
+                          AND (search_expires_at IS NULL OR search_expires_at > NOW())
+                        ORDER BY id ASC");
+
+    foreach ($unassigned as $ord) {
+        $oid = (int) $ord['id'];
+        $cand = row("SELECT dp.user_id
+                     FROM driver_profiles dp
+                     JOIN users u ON u.id = dp.user_id
+                     WHERE dp.is_online = 1
+                       AND dp.is_busy = 0
+                       AND dp.verification_status = 'approved'
+                       AND u.status = 'active'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM orders o2
+                           LEFT JOIN payments p2 ON p2.order_id = o2.id
+                           WHERE (
+                               (o2.driver_id = dp.user_id AND (
+                                   o2.status IN ('accepted','heading_pickup','picked_up','in_trip')
+                                   OR (o2.status = 'completed' AND COALESCE(p2.status, 'pending') = 'pending')
+                               ))
+                               OR (o2.status = 'waiting' AND o2.offered_driver_id = dp.user_id)
+                           )
+                       )
+                       AND NOT EXISTS (
+                           SELECT 1 FROM order_rejections r
+                           WHERE r.order_id = ? AND r.driver_id = dp.user_id
+                       )
+                     ORDER BY RAND()
+                     LIMIT 1", [$oid]);
+
+        if ($cand) {
+            $targetDriverId = (int) $cand['user_id'];
+            $n = q("UPDATE orders SET offered_driver_id = ?, offered_at = NOW()
+                    WHERE id = ? AND status = 'waiting' AND offered_driver_id IS NULL",
+                    [$targetDriverId, $oid])->rowCount();
+            if ($n > 0) {
+                notify($targetDriverId, 'Pesanan baru!', $ord['pickup_address'] . ' → ' . $ord['dest_address'], 'new_order', $oid);
+            }
+        }
+    }
+}
+
 /** Tandai pesanan yang melewati batas waktu pencarian sebagai "Tidak Mendapat Driver". */
 function expire_stale_orders(): void {
     $stale = rows("SELECT id, customer_id FROM orders WHERE status = 'waiting' AND search_expires_at IS NOT NULL AND search_expires_at < NOW()");
     foreach ($stale as $s) {
-        $n = q("UPDATE orders SET status = 'no_driver' WHERE id = ? AND status = 'waiting'", [$s['id']])->rowCount();
+        $n = q("UPDATE orders SET status = 'no_driver', offered_driver_id = NULL, offered_at = NULL WHERE id = ? AND status = 'waiting'", [$s['id']])->rowCount();
         if ($n) {
             order_history((int) $s['id'], 'no_driver', 'Tidak ada driver yang menerima pesanan');
             notify((int) $s['customer_id'], 'Driver tidak ditemukan', 'Belum ada driver yang menerima pesanan Anda. Silakan coba lagi.', 'order', (int) $s['id']);
         }
     }
+    assign_waiting_orders();
 }
 

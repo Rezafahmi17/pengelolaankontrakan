@@ -30,7 +30,7 @@ function h_admin_dashboard(): void {
 function user_row_public(array $r): array {
     $o = [
         'id' => (int) $r['id'], 'role' => $r['role'], 'name' => $r['name'], 'npm' => $r['npm'], 'email' => $r['email'],
-        'phone' => $r['phone'], 'status' => $r['status'], 'blocked_reason' => $r['blocked_reason'],
+        'phone' => $r['phone'], 'avatar_url' => $r['avatar_url'] ?? null, 'status' => $r['status'], 'blocked_reason' => $r['blocked_reason'],
         'last_login_at' => $r['last_login_at'], 'created_at' => $r['created_at'],
     ];
     if ($r['role'] === 'driver') $o['driver'] = driver_info((int) $r['id']);

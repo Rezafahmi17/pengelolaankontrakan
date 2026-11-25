@@ -100,6 +100,8 @@ CREATE TABLE orders (
   order_code VARCHAR(20) NOT NULL UNIQUE,
   customer_id INT UNSIGNED NOT NULL,
   driver_id INT UNSIGNED NULL,
+  offered_driver_id INT UNSIGNED NULL,
+  offered_at DATETIME NULL,
   pickup_address VARCHAR(255) NOT NULL,
   pickup_lat DECIMAL(10,7) NOT NULL,
   pickup_lng DECIMAL(10,7) NOT NULL,

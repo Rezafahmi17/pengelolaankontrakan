@@ -21,21 +21,33 @@ class DriverShell extends StatefulWidget {
   State<DriverShell> createState() => _DriverShellState();
 }
 
-class _DriverShellState extends State<DriverShell> {
+class _DriverShellState extends State<DriverShell> with WidgetsBindingObserver {
   late final DriverController _ctrl;
+  final _earningsKey = GlobalKey<EarningsScreenState>();
   int _index = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ctrl = DriverController(context.read<AuthProvider>());
     _ctrl.start();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ctrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Saat driver kembali membuka aplikasi, sinkronkan status online & pesanan masuk tanpa mematikan status online
+      _ctrl.auth.refreshUser();
+      _ctrl.start();
+    }
   }
 
   @override
@@ -52,7 +64,7 @@ class _DriverShellState extends State<DriverShell> {
             children: [
               DriverHomeScreen(onOpenOrders: () => setState(() => _index = 1)),
               const DriverOrdersScreen(),
-              const EarningsScreen(),
+              EarningsScreen(key: _earningsKey),
               Scaffold(
                 appBar: AppBar(title: const Text('Profil Driver')),
                 body: ProfileView(
@@ -113,7 +125,12 @@ class _DriverShellState extends State<DriverShell> {
           extendBody: true,
           bottomNavigationBar: CustomFloatingNavBar(
             currentIndex: _index,
-            onTap: (i) => setState(() => _index = i),
+            onTap: (i) {
+              setState(() => _index = i);
+              if (i == 2) {
+                _earningsKey.currentState?.reload();
+              }
+            },
             items: [
               const NavItem(
                 icon: Icons.navigation_outlined,
@@ -124,7 +141,7 @@ class _DriverShellState extends State<DriverShell> {
                 icon: Icons.receipt_long_outlined,
                 activeIcon: Icons.receipt_long_rounded,
                 label: 'Pesanan',
-                showBadge: c.active != null,
+                showBadge: c.active != null || c.incoming.isNotEmpty,
               ),
               const NavItem(
                 icon: Icons.account_balance_wallet_outlined,

@@ -13,10 +13,14 @@ function h_quote(): void {
 
 function h_nearby_drivers(): void {
     require_role('customer');
-    $list = rows("SELECT u.id, u.name, dl.lat, dl.lng, dp.rating_avg, v.brand_model, v.plate_number
+    sync_driver_busy_flags();
+    $list = rows("SELECT u.id, u.name,
+                         COALESCE(dl.lat, -5.358214) AS lat,
+                         COALESCE(dl.lng, 105.233129) AS lng,
+                         dp.rating_avg, v.brand_model, v.plate_number
                   FROM driver_profiles dp
                   JOIN users u ON u.id = dp.user_id AND u.status = 'active'
-                  JOIN driver_locations dl ON dl.driver_id = dp.user_id
+                  LEFT JOIN driver_locations dl ON dl.driver_id = dp.user_id
                   LEFT JOIN vehicles v ON v.driver_id = dp.user_id
                   WHERE dp.is_online = 1 AND dp.is_busy = 0 AND dp.verification_status = 'approved'");
     ok(['drivers' => array_map(fn($r) => [
@@ -57,10 +61,8 @@ function h_order_create(): void {
     q('INSERT INTO payments (order_id, amount, method, status) VALUES (?,?,?,?)', [$id, $fare, $method, 'pending']);
     order_history($id, 'waiting', 'Pesanan dibuat, mencari driver', (int) $u['id']);
 
-    // Distribusi ke seluruh driver online, terverifikasi & tidak sibuk
-    foreach (rows("SELECT dp.user_id FROM driver_profiles dp JOIN users u ON u.id = dp.user_id
-                   WHERE dp.is_online = 1 AND dp.is_busy = 0 AND dp.verification_status = 'approved' AND u.status = 'active'") as $dr)
-        notify((int) $dr['user_id'], 'Pesanan baru!', $d['pickup_address'] . ' → ' . $d['dest_address'], 'new_order', $id);
+    // Distribusikan pesanan secara ACAK ke 1 driver online yang sedang bebas (tidak menumpuk)
+    assign_waiting_orders();
 
     ok(['order' => order_full($id)], 'Pesanan dibuat, sedang mencari driver');
 }
@@ -140,20 +142,29 @@ function driver_gate(array $u): array {
 
 function h_driver_status(): void {
     $u = require_role('driver');
+    sync_driver_busy_flags();
     $dp = driver_gate($u);
     $online = filter_var(in('online', false), FILTER_VALIDATE_BOOLEAN);
     if ($online) {
         if ($u['status'] === 'blocked') throw new ApiException('Akun Anda diblokir' . ($u['blocked_reason'] ? ': ' . $u['blocked_reason'] : '') . '. Hubungi admin.', 403);
         if ($dp['verification_status'] === 'pending') throw new ApiException('Akun Anda belum diverifikasi admin', 403);
         if ($dp['verification_status'] === 'rejected') throw new ApiException('Pendaftaran ditolak: ' . $dp['rejection_reason'], 403);
-        if (in('lat') !== null && in('lng') !== null) {
-            q('INSERT INTO driver_locations (driver_id, lat, lng) VALUES (?,?,?) ON DUPLICATE KEY UPDATE lat = VALUES(lat), lng = VALUES(lng)',
-                [$u['id'], in('lat'), in('lng')]);
-        }
+        $lat = in('lat') !== null ? (float) in('lat') : -5.358214;
+        $lng = in('lng') !== null ? (float) in('lng') : 105.233129;
+        q('INSERT INTO driver_locations (driver_id, lat, lng) VALUES (?,?,?) ON DUPLICATE KEY UPDATE lat = VALUES(lat), lng = VALUES(lng)',
+            [$u['id'], $lat, $lng]);
         q('UPDATE driver_profiles SET is_online = 1, last_online_at = NOW() WHERE user_id = ?', [$u['id']]);
+        assign_waiting_orders();
     } else {
-        if ((int) $dp['is_busy'] === 1) throw new ApiException('Selesaikan pesanan aktif sebelum offline', 409);
+        $hasActive = scalar("SELECT o.id FROM orders o LEFT JOIN payments p ON p.order_id = o.id
+                             WHERE o.driver_id = ? AND (o.status IN ('accepted','heading_pickup','picked_up','in_trip')
+                                OR (o.status = 'completed' AND COALESCE(p.status, 'pending') = 'pending'))
+                             LIMIT 1", [$u['id']]);
+        if ((int) $dp['is_busy'] === 1 || $hasActive) throw new ApiException('Selesaikan pesanan aktif sebelum offline', 409);
         q('UPDATE driver_profiles SET is_online = 0, last_online_at = NOW() WHERE user_id = ?', [$u['id']]);
+        // Jika ada pesanan waiting yang sedang ditawarkan ke driver ini, langsung alihkan ke driver online lain
+        q("UPDATE orders SET offered_driver_id = NULL, offered_at = NULL WHERE status = 'waiting' AND offered_driver_id = ?", [$u['id']]);
+        assign_waiting_orders();
     }
     ok(['user' => user_public(row('SELECT * FROM users WHERE id = ?', [$u['id']]))], $online ? 'Anda sekarang online' : 'Anda sekarang offline');
 }
@@ -170,17 +181,28 @@ function h_driver_location(): void {
 
 function h_driver_incoming(): void {
     $u = require_role('driver');
-    $dp = driver_gate($u);
     expire_stale_orders();
+    $dp = driver_gate($u);
     if (!$dp['is_online'] || $dp['is_busy'] || $dp['verification_status'] !== 'approved' || $u['status'] !== 'active') ok(['orders' => []]);
+    // Anti-penumpukan: jika masih ada pesanan aktif / belum dikonfirmasi pembayarannya, tidak boleh menerima pesanan masuk
+    $hasActive = scalar("SELECT o.id FROM orders o LEFT JOIN payments p ON p.order_id = o.id
+                         WHERE o.driver_id = ? AND (o.status IN ('accepted','heading_pickup','picked_up','in_trip')
+                            OR (o.status = 'completed' AND COALESCE(p.status, 'pending') = 'pending'))
+                         LIMIT 1", [$u['id']]);
+    if ($hasActive) ok(['orders' => []]);
+
     $loc = row('SELECT lat, lng FROM driver_locations WHERE driver_id = ?', [$u['id']]);
+    // Hanya tampilkan Maksimal 1 pesanan yang secara acak sedang ditawarkan khusus ke driver ini (offered_driver_id = ?)
     $list = rows("SELECT o.id, o.order_code, o.pickup_address, o.pickup_lat, o.pickup_lng, o.dest_address, o.dest_lat, o.dest_lng,
                          o.distance_km, o.duration_min, o.total_fare, o.payment_method, c.name AS customer_name,
                          GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), o.search_expires_at)) AS seconds_left
                   FROM orders o JOIN users c ON c.id = o.customer_id
-                  WHERE o.status = 'waiting' AND o.driver_id IS NULL AND (o.search_expires_at IS NULL OR o.search_expires_at > NOW())
+                  WHERE o.status = 'waiting'
+                    AND o.driver_id IS NULL
+                    AND o.offered_driver_id = ?
+                    AND (o.search_expires_at IS NULL OR o.search_expires_at > NOW())
                     AND NOT EXISTS (SELECT 1 FROM order_rejections r WHERE r.order_id = o.id AND r.driver_id = ?)
-                  ORDER BY o.id ASC LIMIT 10", [$u['id']]);
+                  ORDER BY o.id ASC LIMIT 1", [$u['id'], $u['id']]);
     ok(['orders' => array_map(function ($o) use ($loc) {
         $o['id'] = (int) $o['id'];
         foreach (['pickup_lat', 'pickup_lng', 'dest_lat', 'dest_lng', 'distance_km'] as $k) $o[$k] = (float) $o[$k];
@@ -192,7 +214,7 @@ function h_driver_incoming(): void {
     }, $list)]);
 }
 
-/** Pengambilan pesanan atomik: hanya satu driver yang dapat memenangkan pesanan. */
+/** Pengambilan pesanan atomik: hanya satu driver yang dapat memenangkan pesanan, dan tidak boleh menumpuk pesanan. */
 function h_order_accept(array $p): void {
     $u = require_role('driver');
     $id = (int) $p['id'];
@@ -203,18 +225,27 @@ function h_order_accept(array $p): void {
         $fresh = row('SELECT status FROM users WHERE id = ?', [$u['id']]);
         if (!$dp || $dp['verification_status'] !== 'approved' || $fresh['status'] !== 'active') throw new ApiException('Akun driver tidak dapat menerima pesanan', 403);
         if (!$dp['is_online']) throw new ApiException('Aktifkan status online terlebih dahulu', 409);
-        if ($dp['is_busy']) throw new ApiException('Anda masih memiliki pesanan aktif', 409);
+
+        $hasActive = scalar("SELECT o.id FROM orders o LEFT JOIN payments p ON p.order_id = o.id
+                             WHERE o.driver_id = ? AND (o.status IN ('accepted','heading_pickup','picked_up','in_trip')
+                                OR (o.status = 'completed' AND COALESCE(p.status, 'pending') = 'pending'))
+                             LIMIT 1", [$u['id']]);
+        if ($dp['is_busy'] || $hasActive) throw new ApiException('Selesaikan pesanan aktif Anda terlebih dahulu sebelum mengambil pesanan baru', 409);
 
         $o = row('SELECT * FROM orders WHERE id = ? FOR UPDATE', [$id]);
         if (!$o) throw new ApiException('Pesanan tidak ditemukan', 404);
         if ($o['status'] !== 'waiting' || $o['driver_id'] !== null)
             throw new ApiException('Pesanan sudah diambil driver lain', 409, ['code' => 'ORDER_TAKEN']);
+        if ($o['offered_driver_id'] !== null && (int) $o['offered_driver_id'] !== (int) $u['id'])
+            throw new ApiException('Pesanan sudah dialihkan ke driver lain', 409, ['code' => 'ORDER_TAKEN']);
         if ($o['search_expires_at'] !== null && strtotime($o['search_expires_at']) < time())
             throw new ApiException('Pesanan sudah kedaluwarsa', 409, ['code' => 'ORDER_EXPIRED']);
 
-        $n = q("UPDATE orders SET driver_id = ?, status = 'accepted', accepted_at = NOW() WHERE id = ? AND status = 'waiting' AND driver_id IS NULL", [$u['id'], $id])->rowCount();
+        $n = q("UPDATE orders SET driver_id = ?, offered_driver_id = NULL, offered_at = NULL, status = 'accepted', accepted_at = NOW() WHERE id = ? AND status = 'waiting' AND driver_id IS NULL", [$u['id'], $id])->rowCount();
         if ($n !== 1) throw new ApiException('Pesanan sudah diambil driver lain', 409, ['code' => 'ORDER_TAKEN']);
         q('UPDATE driver_profiles SET is_busy = 1 WHERE user_id = ?', [$u['id']]);
+        // Lepaskan pesanan waiting lain jika ada yang mengarah ke driver ini
+        q("UPDATE orders SET offered_driver_id = NULL, offered_at = NULL WHERE status = 'waiting' AND offered_driver_id = ?", [$u['id']]);
         order_history($id, 'accepted', 'Diterima oleh ' . $u['name'], (int) $u['id']);
         notify((int) $o['customer_id'], 'Driver ditemukan!', $u['name'] . ' menerima pesanan Anda dan segera menjemput.', 'order', $id);
         $pdo->commit();
@@ -222,13 +253,62 @@ function h_order_accept(array $p): void {
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
+    assign_waiting_orders();
     ok(['order' => order_full($id)], 'Pesanan berhasil diambil');
 }
 
 function h_order_reject(array $p): void {
     $u = require_role('driver');
-    q("INSERT IGNORE INTO order_rejections (order_id, driver_id, reason) VALUES (?,?, 'rejected')", [(int) $p['id'], $u['id']]);
-    ok([], 'Pesanan ditolak');
+    $id = (int) $p['id'];
+    $uid = (int) $u['id'];
+    q("INSERT IGNORE INTO order_rejections (order_id, driver_id, reason) VALUES (?,?, 'rejected')", [$id, $uid]);
+
+    // Lepaskan pesanan dari driver ini & perpanjang durasi pencarian untuk driver berikutnya
+    $timeout = (int) setting('order_search_timeout_sec', '120');
+    q("UPDATE orders
+       SET offered_driver_id = NULL,
+           offered_at = NULL,
+           search_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
+       WHERE id = ? AND status = 'waiting' AND (offered_driver_id = ? OR offered_driver_id IS NULL)",
+       [$timeout, $id, $uid]);
+
+    // Periksa apakah masih ada driver online bebas lain yang belum pernah menolak pesanan ini
+    $hasOtherUnrejected = scalar("SELECT dp.user_id
+        FROM driver_profiles dp
+        JOIN users usr ON usr.id = dp.user_id
+        WHERE dp.is_online = 1 AND dp.is_busy = 0 AND dp.verification_status = 'approved' AND usr.status = 'active'
+          AND dp.user_id <> ?
+          AND NOT EXISTS (
+              SELECT 1 FROM orders o2 LEFT JOIN payments p2 ON p2.order_id = o2.id
+              WHERE (o2.driver_id = dp.user_id AND (o2.status IN ('accepted','heading_pickup','picked_up','in_trip') OR (o2.status = 'completed' AND COALESCE(p2.status, 'pending') = 'pending')))
+                 OR (o2.status = 'waiting' AND o2.offered_driver_id = dp.user_id)
+          )
+          AND NOT EXISTS (SELECT 1 FROM order_rejections r WHERE r.order_id = ? AND r.driver_id = dp.user_id)
+        LIMIT 1", [$uid, $id]);
+
+    if (!$hasOtherUnrejected) {
+        // Jika semua driver online lain yang bebas sudah pernah menolak sebelumnya,
+        // bersihkan riwayat penolakan driver lain (kecuali driver yang baru saja menolak)
+        // agar pesanan tetap terlempar ke driver online lain yang sedang aktif.
+        $hasAnyOtherFree = scalar("SELECT dp.user_id
+            FROM driver_profiles dp
+            JOIN users usr ON usr.id = dp.user_id
+            WHERE dp.is_online = 1 AND dp.is_busy = 0 AND dp.verification_status = 'approved' AND usr.status = 'active'
+              AND dp.user_id <> ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM orders o2 LEFT JOIN payments p2 ON p2.order_id = o2.id
+                  WHERE (o2.driver_id = dp.user_id AND (o2.status IN ('accepted','heading_pickup','picked_up','in_trip') OR (o2.status = 'completed' AND COALESCE(p2.status, 'pending') = 'pending')))
+                     OR (o2.status = 'waiting' AND o2.offered_driver_id = dp.user_id)
+              )
+            LIMIT 1", [$uid]);
+        if ($hasAnyOtherFree) {
+            q("DELETE FROM order_rejections WHERE order_id = ? AND driver_id <> ?", [$id, $uid]);
+        }
+    }
+
+    // Lempar otomatis secara acak ke driver online lain yang sedang bebas
+    assign_waiting_orders();
+    ok([], 'Pesanan ditolak dan dialihkan ke driver lain');
 }
 
 function own_driver_order(array $u, int $id): array {
@@ -284,6 +364,7 @@ function h_order_confirm_payment(array $p): void {
     q('UPDATE driver_profiles SET is_busy = 0 WHERE user_id = ?', [$u['id']]);
     order_history($id, 'payment_confirmed', 'Pembayaran dikonfirmasi driver. Perjalanan selesai.', (int) $u['id']);
     notify((int) $o['customer_id'], 'Pembayaran Dikonfirmasi', 'Driver telah mengkonfirmasi pembayaran Anda. Perjalanan selesai! Silakan beri penilaian.', 'payment', $id);
+    assign_waiting_orders();
     ok(['order' => order_full($id)], 'Pembayaran berhasil dikonfirmasi');
 }
 
@@ -318,15 +399,12 @@ function h_order_driver_cancel(array $p): void {
         q("INSERT IGNORE INTO order_rejections (order_id, driver_id, reason) VALUES (?,?, 'cancelled')", [$id, $u['id']]);
 
         if ($beforePickup) {
-            // kembalikan ke pencarian driver
+            // kembalikan ke pencarian driver dan lempar ke driver online lain secara acak
             $timeout = (int) setting('order_search_timeout_sec', '120');
-            q("UPDATE orders SET status = 'waiting', driver_id = NULL, accepted_at = NULL, search_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE id = ?", [$timeout, $id]);
+            q("UPDATE orders SET status = 'waiting', driver_id = NULL, offered_driver_id = NULL, offered_at = NULL, accepted_at = NULL, search_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE id = ?", [$timeout, $id]);
             order_history($id, 'cancelled_driver', 'Driver membatalkan: ' . $d['reason'], (int) $u['id']);
             order_history($id, 'waiting', 'Mencari driver pengganti', null);
             notify((int) $o['customer_id'], 'Driver membatalkan', 'Kami sedang mencarikan driver pengganti untuk Anda.', 'order', $id);
-            foreach (rows("SELECT dp.user_id FROM driver_profiles dp JOIN users x ON x.id = dp.user_id
-                           WHERE dp.is_online = 1 AND dp.is_busy = 0 AND dp.verification_status = 'approved' AND x.status = 'active' AND dp.user_id <> ?", [$u['id']]) as $dr)
-                notify((int) $dr['user_id'], 'Pesanan baru!', $o['pickup_address'] . ' → ' . $o['dest_address'], 'new_order', $id);
         } else {
             q("UPDATE orders SET status = 'cancelled_driver', cancel_reason = ? WHERE id = ?", [$d['reason'], $id]);
             order_history($id, 'cancelled_driver', 'Driver membatalkan: ' . $d['reason'], (int) $u['id']);
@@ -342,6 +420,7 @@ function h_order_driver_cancel(array $p): void {
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
+    assign_waiting_orders();
     $msg = $status === 'pending_review'
         ? 'Pembatalan dicatat dan akan ditinjau admin (darurat/teknis).'
         : "Pembatalan dicatat sebagai pelanggaran (+$points poin)." . ($blocked ? ' Akun Anda diblokir karena batas pelanggaran tercapai.' : '');

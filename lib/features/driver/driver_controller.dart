@@ -65,12 +65,13 @@ class DriverController extends ChangeNotifier {
         position ??= await LocationService.current();
       }
 
-      // 3. pesanan masuk
+      // 3. pesanan masuk (maksimal 1 pesanan ditawarkan secara acak ke driver ini)
       if (online && active == null && canWork) {
         final d = await Api.get('driver/incoming');
         incoming = (d['orders'] as List).map((e) => IncomingOrder.fromJson(e)).toList();
         final ids = incoming.map((e) => e.id).toSet();
         dismissed.removeWhere((id) => !ids.contains(id));
+        _seen.removeWhere((id) => !ids.contains(id));
         for (final o in incoming) {
           if (_seen.add(o.id) && !dismissed.contains(o.id)) {
             HapticFeedback.heavyImpact();
@@ -80,6 +81,7 @@ class DriverController extends ChangeNotifier {
         }
       } else {
         incoming = [];
+        _seen.clear();
       }
 
       // 4. sinkronisasi akun (blokir / verifikasi) tiap ±15 detik

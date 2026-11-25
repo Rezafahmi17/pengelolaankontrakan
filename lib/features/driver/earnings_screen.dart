@@ -14,19 +14,37 @@ class EarningsScreen extends StatefulWidget {
   const EarningsScreen({super.key});
 
   @override
-  State<EarningsScreen> createState() => _EarningsScreenState();
+  State<EarningsScreen> createState() => EarningsScreenState();
 }
 
-class _EarningsScreenState extends State<EarningsScreen> {
+class EarningsScreenState extends State<EarningsScreen> {
   final _key = GlobalKey<AsyncPageState>();
+  final _feeKey = GlobalKey<_DriverFeePaymentSectionState>();
+
+  void reload() {
+    _key.currentState?.reload();
+    _feeKey.currentState?.reload();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pendapatan & Penalti')),
+      appBar: AppBar(
+        title: const Text('Pendapatan & Penalti'),
+        actions: [
+          IconButton(
+            tooltip: 'Muat Ulang Data',
+            onPressed: reload,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
       body: AsyncPage(
         key: _key,
-        load: () => Api.get('driver/summary'),
+        load: () async {
+          _feeKey.currentState?.reload();
+          return Api.get('driver/summary');
+        },
         builder: (context, data) {
           final total = data['total_earnings'] as num? ?? 0;
           final today = data['today_earnings'] as num? ?? 0;
@@ -146,7 +164,11 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 ),
               ],
               const SectionTitle('Setoran Biaya Aplikasi (QRIS Admin)'),
-              _DriverFeePaymentSection(onChanged: () => _key.currentState?.reload()),
+              _DriverFeePaymentSection(
+                key: _feeKey,
+                completedOrdersFallback: completed.toInt(),
+                onChanged: () => _key.currentState?.reload(),
+              ),
               SectionTitle('Riwayat transaksi lunas',
                   trailing: Text('${txs.length} transaksi',
                       style: const TextStyle(color: AppColors.grey, fontSize: 12.5))),
@@ -176,7 +198,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
 class _DriverFeePaymentSection extends StatefulWidget {
   final VoidCallback onChanged;
-  const _DriverFeePaymentSection({required this.onChanged});
+  final int completedOrdersFallback;
+  const _DriverFeePaymentSection({
+    super.key,
+    required this.onChanged,
+    this.completedOrdersFallback = 0,
+  });
 
   @override
   State<_DriverFeePaymentSection> createState() => _DriverFeePaymentSectionState();
@@ -184,6 +211,10 @@ class _DriverFeePaymentSection extends StatefulWidget {
 
 class _DriverFeePaymentSectionState extends State<_DriverFeePaymentSection> {
   final _key = GlobalKey<AsyncPageState>();
+
+  void reload() {
+    _key.currentState?.reload();
+  }
 
   void _openPaySheet(BuildContext context, Map data) {
     showModalBottomSheet(
@@ -257,14 +288,51 @@ class _DriverFeePaymentSectionState extends State<_DriverFeePaymentSection> {
       key: _key,
       load: () => Api.get('driver/fee-payments'),
       builder: (context, data) {
-        final feePerTrip = data['fee_per_trip'] as num? ?? 1000;
-        final completedTrips = data['completed_trips'] as num? ?? 0;
-        final totalObligation = data['total_fee_obligation'] as num? ?? 0;
-        final totalPaid = data['total_fee_paid'] as num? ?? 0;
-        final totalPending = data['total_fee_pending'] as num? ?? 0;
-        final unpaidFee = data['unpaid_fee'] as num? ?? 0;
         final paymentsRaw = (data['payments'] as List? ?? []);
         final payments = paymentsRaw.map((e) => DriverFeePayment.fromJson(Map<String, dynamic>.from(e))).toList();
+
+        // Hitung fallback dari list pembayaran jika key lama/baru berbeda
+        int calcApproved = 0;
+        int calcPending = 0;
+        for (final p in payments) {
+          if (p.status == 'approved') calcApproved += p.amount;
+          if (p.status == 'pending') calcPending += p.amount;
+        }
+
+        final num feePerTrip = (data['fee_per_trip'] ?? data['fee_per_order'] ?? 1000) as num;
+        final int rawTrips = ((data['completed_trips'] ?? data['completed_orders'] ?? 0) as num).toInt();
+        final int completedTrips = rawTrips > 0 ? rawTrips : widget.completedOrdersFallback;
+        final int totalObligation = ((data['total_fee_obligation'] ?? (completedTrips * feePerTrip)) as num).toInt();
+        final int rawPaid = ((data['total_fee_paid'] ?? data['total_paid'] ?? 0) as num).toInt();
+        final int totalPaid = rawPaid > 0 ? rawPaid : calcApproved;
+        final int rawPending = ((data['total_fee_pending'] ?? data['total_pending'] ?? 0) as num).toInt();
+        final int totalPending = rawPending > 0 ? rawPending : calcPending;
+
+        final int unpaidFee = (totalObligation - totalPaid) > 0 ? (totalObligation - totalPaid) : 0;
+        final int overpaidFee = (totalPaid - totalObligation) > 0 ? (totalPaid - totalObligation) : 0;
+        final bool isWaitingVerification = unpaidFee > 0 && totalPending > 0;
+        final Color statusColor = unpaidFee > 0
+            ? (isWaitingVerification ? AppColors.warning : AppColors.danger)
+            : AppColors.success;
+        final String statusTitle = unpaidFee > 0
+            ? (isWaitingVerification
+                ? 'Menunggu Verifikasi Super Admin'
+                : 'Sisa Setoran yang Harus Dibayar')
+            : (totalPaid > 0
+                ? 'Status Kewajiban Setoran (Disetujui)'
+                : 'Status Kewajiban Setoran');
+        final String statusValue = unpaidFee > 0
+            ? (isWaitingVerification
+                ? '${Fmt.rupiah(totalPending)} sedang diverifikasi'
+                : Fmt.rupiah(unpaidFee))
+            : (totalPaid > 0
+                ? (overpaidFee > 0
+                    ? 'Lunas • Saldo Setoran +${Fmt.rupiah(overpaidFee)}'
+                    : 'Lunas (${Fmt.rupiah(totalPaid)} Disetujui)')
+                : 'Lunas (Tidak ada tunggakan)');
+        final IconData statusIcon = unpaidFee > 0
+            ? (isWaitingVerification ? Icons.hourglass_top_rounded : Icons.error_outline_rounded)
+            : Icons.check_circle_rounded;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -340,39 +408,43 @@ class _DriverFeePaymentSectionState extends State<_DriverFeePaymentSection> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: unpaidFee > 0 ? AppColors.danger.withValues(alpha: 0.1) : AppColors.success.withValues(alpha: 0.1),
+                        color: statusColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: unpaidFee > 0 ? AppColors.danger.withValues(alpha: 0.3) : AppColors.success.withValues(alpha: 0.3),
+                          color: statusColor.withValues(alpha: 0.35),
                         ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                unpaidFee > 0 ? 'Sisa Setoran yang Harus Dibayar' : 'Status Kewajiban Setoran',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: unpaidFee > 0 ? AppColors.danger : AppColors.success,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  statusTitle,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: statusColor,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                unpaidFee > 0 ? Fmt.rupiah(unpaidFee) : 'Lunas (Tidak ada tunggakan)',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                  color: unpaidFee > 0 ? AppColors.danger : AppColors.success,
+                                const SizedBox(height: 2),
+                                Text(
+                                  statusValue,
+                                  style: TextStyle(
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: statusColor,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           Icon(
-                            unpaidFee > 0 ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
-                            color: unpaidFee > 0 ? AppColors.danger : AppColors.success,
+                            statusIcon,
+                            color: statusColor,
                             size: 28,
                           ),
                         ],
@@ -512,8 +584,10 @@ class _PayFeeSheetState extends State<_PayFeeSheet> {
   @override
   void initState() {
     super.initState();
-    final unpaid = widget.data['unpaid_fee'] as num? ?? 0;
-    final feePerTrip = widget.data['fee_per_trip'] as num? ?? 1000;
+    final feePerTrip = (widget.data['fee_per_trip'] ?? widget.data['fee_per_order'] ?? 1000) as num;
+    final totalObligation = (widget.data['total_fee_obligation'] ?? 0) as num;
+    final totalPaid = (widget.data['total_fee_paid'] ?? widget.data['total_paid'] ?? 0) as num;
+    final unpaid = (widget.data['unpaid_fee'] ?? ((totalObligation - totalPaid) > 0 ? (totalObligation - totalPaid) : 0)) as num;
     _amountCtrl = TextEditingController(text: '${unpaid > 0 ? unpaid : feePerTrip}');
   }
 

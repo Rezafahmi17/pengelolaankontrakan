@@ -410,9 +410,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with AutomaticKeepA
       );
     }
 
-    // Online & waiting for incoming orders
+    // Online & waiting for incoming orders (maks 1 pesanan masuk per driver agar tidak menumpuk)
     final incoming = ctrl.incoming.where((e) => !ctrl.dismissed.contains(e.id)).toList();
     if (incoming.isNotEmpty) {
+      final inc = incoming.first;
       return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -420,28 +421,77 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> with AutomaticKeepA
           Row(children: [
             const Icon(Icons.notifications_active_rounded, color: AppColors.primary, size: 20),
             const SizedBox(width: 8),
-            Text('${incoming.length} Pesanan Masuk',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const Expanded(
+              child: Text('Pesanan Baru Masuk Untuk Anda',
+                  style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800)),
+            ),
+            StatusChip(inc.isQris ? 'QRIS' : 'Tunai', inc.isQris ? AppColors.info : AppColors.primary),
           ]),
           const SizedBox(height: 10),
-          for (final inc in incoming.take(2))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Card(
-                color: AppColors.primaryLight,
-                child: ListTile(
-                  title: Text(inc.customerName, style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${inc.pickupAddress} → ${inc.destAddress}\n${Fmt.rupiah(inc.totalFare)}',
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                  isThreeLine: true,
-                  trailing: FilledButton(
-                    style: FilledButton.styleFrom(minimumSize: const Size(80, 36)),
-                    onPressed: () => showIncomingOrderSheet(context, ctrl, inc, onAccepted: widget.onOpenOrders),
-                    child: const Text('Lihat'),
-                  ),
-                ),
-              ),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Avatar(inc.customerName.isEmpty ? 'C' : inc.customerName[0].toUpperCase(), size: 38, bg: Colors.white),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(inc.customerName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                          Text('${Fmt.km(inc.distanceKm)} • ${inc.code}',
+                              style: const TextStyle(fontSize: 12, color: AppColors.grey)),
+                        ],
+                      ),
+                    ),
+                    Text(Fmt.rupiah(inc.totalFare),
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primaryDark)),
+                  ],
+                ),
+                const Divider(height: 18),
+                RouteSummary(pickup: inc.pickupAddress, dest: inc.destAddress),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.danger,
+                          side: const BorderSide(color: AppColors.danger),
+                          minimumSize: const Size.fromHeight(42),
+                        ),
+                        onPressed: () async {
+                          await ctrl.reject(inc);
+                          if (mounted) {
+                            showMsg(context, 'Pesanan ditolak & dialihkan ke driver lain');
+                          }
+                        },
+                        child: const Text('Tolak'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42)),
+                        onPressed: () => showIncomingOrderSheet(context, ctrl, inc, onAccepted: widget.onOpenOrders),
+                        icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                        label: const Text('Lihat & Terima'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       );
     }

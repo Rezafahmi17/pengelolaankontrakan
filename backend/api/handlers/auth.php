@@ -79,11 +79,54 @@ function h_login(): void {
 function h_logout(): void {
     $u = current_user();
     q('UPDATE users SET api_token = NULL, token_expires_at = NULL WHERE id = ?', [$u['id']]);
-    if ($u['role'] === 'driver') {
-        $busy = scalar("SELECT 1 FROM orders WHERE driver_id = ? AND status IN ('accepted','heading_pickup','picked_up','in_trip')", [$u['id']]);
-        if (!$busy) q('UPDATE driver_profiles SET is_online = 0, last_online_at = NOW() WHERE user_id = ?', [$u['id']]);
-    }
+    // Status is_online driver TIDAK dimatikan saat keluar dari aplikasi / logout;
+    // mode pencarian hanya mati apabila dimatikan sendiri oleh driver melalui tombol switch.
     ok([], 'Logout berhasil');
+}
+
+function normalize_phone_compare(string $p): string {
+    $clean = preg_replace('/[^0-9]/', '', $p);
+    if (str_starts_with($clean, '62')) $clean = substr($clean, 2);
+    return ltrim($clean, '0');
+}
+
+function find_user_for_recovery(string $identifier, string $phone): array {
+    $idClean = trim($identifier);
+    $u = row("SELECT * FROM users WHERE (LOWER(email) = ? OR npm = ?) AND status <> 'deleted' LIMIT 1",
+        [strtolower($idClean), $idClean]);
+    if (!$u) throw new ApiException('Akun dengan Email atau NPM tersebut tidak ditemukan', 404);
+    $inPhone = normalize_phone_compare($phone);
+    $dbPhone = normalize_phone_compare((string) ($u['phone'] ?? ''));
+    if ($inPhone === '' || $inPhone !== $dbPhone) {
+        throw new ApiException('Nomor HP tidak sesuai dengan data akun yang terdaftar', 422);
+    }
+    return $u;
+}
+
+function h_forgot_password_verify(): void {
+    $d = need('identifier', 'phone');
+    $u = find_user_for_recovery((string) $d['identifier'], (string) $d['phone']);
+    ok([
+        'verified' => true,
+        'user' => [
+            'id' => (int) $u['id'],
+            'name' => $u['name'],
+            'email' => $u['email'],
+            'npm' => $u['npm'],
+            'role' => $u['role'],
+        ],
+    ], 'Identitas akun berhasil diverifikasi');
+}
+
+function h_forgot_password_reset(): void {
+    $d = need('identifier', 'phone', 'new_password');
+    $pw = (string) $d['new_password'];
+    if (strlen($pw) < 6) throw new ApiException('Kata sandi baru minimal 6 karakter', 422);
+    $u = find_user_for_recovery((string) $d['identifier'], (string) $d['phone']);
+    q('UPDATE users SET password_hash = ? WHERE id = ?',
+        [password_hash($pw, PASSWORD_BCRYPT), $u['id']]);
+    notify((int) $u['id'], 'Kata Sandi Diperbarui', 'Kata sandi akun Anda telah berhasil direset melalui fitur Lupa Kata Sandi.', 'info');
+    ok([], 'Kata sandi berhasil diperbarui! Silakan login dengan kata sandi baru.');
 }
 
 function h_me(): void {
@@ -146,17 +189,26 @@ function h_driver_fee_payments_mine(): void {
     $list = rows('SELECT * FROM driver_fee_payments WHERE driver_id = ? ORDER BY id DESC LIMIT 50', [$u['id']]);
     $fee = (int) setting('withdrawal_fee', '1000');
     $adminQris = setting('admin_qris_url', '');
-    $completedCount = (int) scalar("SELECT COUNT(*) FROM orders WHERE driver_id = ? AND status = 'completed'", [$u['id']]);
+    $completedCount = (int) scalar("SELECT COUNT(*) FROM orders o JOIN payments p ON p.order_id = o.id WHERE o.driver_id = ? AND o.status = 'completed' AND p.status = 'paid'", [$u['id']]);
     $totalPaid = (int) scalar("SELECT COALESCE(SUM(amount), 0) FROM driver_fee_payments WHERE driver_id = ? AND status = 'approved'", [$u['id']]);
     $totalPending = (int) scalar("SELECT COALESCE(SUM(amount), 0) FROM driver_fee_payments WHERE driver_id = ? AND status = 'pending'", [$u['id']]);
+    $totalObligation = $completedCount * $fee;
+    $unpaidFee = max(0, $totalObligation - $totalPaid);
+    $overpaidFee = max(0, $totalPaid - $totalObligation);
 
     ok([
+        'fee_per_trip' => $fee,
         'fee_per_order' => $fee,
         'admin_qris_url' => $adminQris,
+        'completed_trips' => $completedCount,
         'completed_orders' => $completedCount,
-        'total_fee_obligation' => $completedCount * $fee,
+        'total_fee_obligation' => $totalObligation,
+        'total_fee_paid' => $totalPaid,
         'total_paid' => $totalPaid,
+        'total_fee_pending' => $totalPending,
         'total_pending' => $totalPending,
+        'unpaid_fee' => $unpaidFee,
+        'overpaid_fee' => $overpaidFee,
         'payments' => array_map(function($r) {
             $r['id'] = (int) $r['id'];
             $r['amount'] = (int) $r['amount'];

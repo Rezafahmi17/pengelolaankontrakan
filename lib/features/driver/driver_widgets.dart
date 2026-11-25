@@ -39,8 +39,6 @@ Future<void> showIncomingOrderSheet(BuildContext context, DriverController ctrl,
     isDismissible: true,
     builder: (ctx) => ChangeNotifierProvider.value(value: ctrl, child: _IncomingSheet(order: order, onAccepted: onAccepted)),
   );
-  // ditutup tanpa memilih → jangan munculkan otomatis lagi (tetap dapat dibuka dari beranda)
-  ctrl.dismissed.add(order.id);
 }
 
 class _IncomingSheet extends StatefulWidget {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../core/models.dart';
@@ -77,7 +78,7 @@ class _AdminVerificationsScreenState extends State<AdminVerificationsScreen> {
                     final di = d.driver;
                     return Card(
                       child: ListTile(
-                        leading: Avatar(d.initials, size: 44),
+                        leading: Avatar(d.initials, url: d.avatarUrl, size: 44),
                         title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w800)),
                         subtitle: Text(
                           'NPM: ${d.npm ?? "-"}\nMotor: ${di?.vehicle ?? "-"} (${di?.plate ?? "-"})',
@@ -199,7 +200,7 @@ class _DriverVerificationDetailSheetState extends State<_DriverVerificationDetai
           children: [
             const SheetHandle(),
             Row(children: [
-              Avatar(u.initials, size: 54),
+              Avatar(u.initials, url: u.avatarUrl, size: 54),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -277,9 +278,12 @@ class _DriverVerificationDetailSheetState extends State<_DriverVerificationDetai
                         padding: const EdgeInsets.all(16),
                         child: Center(
                           child: OutlinedButton.icon(
-                            onPressed: () {},
+                            onPressed: () => launchUrl(
+                              Uri.parse(Api.authedUrl('admin/documents/${doc['id']}')),
+                              mode: LaunchMode.externalApplication,
+                            ),
                             icon: const Icon(Icons.picture_as_pdf_rounded),
-                            label: const Text('Dokumen PDF'),
+                            label: const Text('Buka Dokumen PDF'),
                           ),
                         ),
                       ),

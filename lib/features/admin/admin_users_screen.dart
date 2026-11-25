@@ -124,7 +124,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     final u = users[i];
                     return Card(
                       child: ListTile(
-                        leading: Avatar(u.initials, size: 44),
+                        leading: Avatar(u.initials, url: u.avatarUrl, size: 44),
                         title: Row(children: [
                           Expanded(
                             child: Text(u.name,
@@ -245,7 +245,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             children: [
               const SheetHandle(),
               Row(children: [
-                Avatar(u.initials, size: 50),
+                Avatar(u.initials, url: u.avatarUrl, size: 50),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

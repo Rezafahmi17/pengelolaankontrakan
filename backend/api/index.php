@@ -18,6 +18,8 @@ $routes = [
     ['POST', 'auth/register', 'h_register'],
     ['POST', 'auth/login', 'h_login'],
     ['POST', 'auth/logout', 'h_logout'],
+    ['POST', 'auth/forgot-password/verify', 'h_forgot_password_verify'],
+    ['POST', 'auth/forgot-password/reset', 'h_forgot_password_reset'],
     ['GET',  'auth/me', 'h_me'],
     ['POST', 'profile/update', 'h_update_profile'],
     ['POST', 'profile/password', 'h_change_password'],

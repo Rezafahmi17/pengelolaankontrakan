@@ -19,17 +19,17 @@ class _HelpScreenState extends State<HelpScreen> {
   List<(String, String)> get _guide => widget.isDriver
       ? const [
           ('Menjadi driver', 'Daftar dengan mengunggah foto KTM dan surat pernyataan bermeterai. Admin akan memverifikasi dokumen Anda sebelum Anda dapat online.'),
-          ('Menerima pesanan', 'Aktifkan tombol Online. Pesanan masuk akan muncul otomatis. Driver yang pertama menekan Terima mendapatkan pesanan.'),
+          ('Menerima pesanan', 'Aktifkan tombol Online. Status online akan tetap aktif sampai Anda mematikannya sendiri. Pesanan masuk akan didistribusikan secara acak dan adil ke driver yang sedang online.'),
           ('Mengantar penumpang', 'Tekan Mulai Navigasi untuk menuju lokasi jemput, konfirmasi Sudah Dijemput, lalu navigasi ke tujuan dan Selesaikan perjalanan.'),
-          ('Pembayaran tunai', 'Setelah perjalanan selesai, terima uang tunai dari customer lalu konfirmasi pembayaran diterima di aplikasi.'),
+          ('Pembayaran Tunai & QRIS', 'Setelah perjalanan selesai, terima uang tunai atau pembayaran QRIS dari customer, lalu tekan Konfirmasi Pembayaran Diterima di aplikasi.'),
           ('Pembatalan & penalti', 'Pembatalan setelah menerima pesanan wajib disertai alasan. Pembatalan tanpa alasan yang dapat diterima akan menambah poin pelanggaran, dan akun dapat diblokir otomatis.'),
         ]
       : const [
-          ('Cara memesan ojek', 'Pilih tujuan di Beranda, cek estimasi tarif, lalu tekan Pesan Ojek. Sistem akan mencarikan driver online terdekat.'),
-          ('Pembayaran', 'Pembayaran dilakukan secara tunai (cash) langsung kepada driver setelah perjalanan selesai.'),
+          ('Cara memesan ojek', 'Pilih titik jemput dan tujuan di Beranda, pilih metode pembayaran (Tunai atau QRIS), lalu tekan Pesan Ojek. Sistem akan mencarikan driver online untuk Anda.'),
+          ('Pembayaran Tunai & QRIS', 'Pembayaran dapat dilakukan secara tunai (Cash) maupun non-tunai (scan barcode QRIS driver). Status pesanan akan selesai setelah driver mengonfirmasi pembayaran.'),
           ('Membatalkan pesanan', 'Anda dapat membatalkan pesanan selama belum diterima driver. Setelah diterima driver, pesanan tidak dapat dibatalkan dari aplikasi.'),
           ('Memantau driver', 'Posisi driver, rute, dan estimasi tiba tampil real-time di peta Beranda selama pesanan berlangsung.'),
-          ('Rating & ulasan', 'Setelah perjalanan selesai, beri 1–5 bintang dan ulasan untuk driver. Satu pesanan hanya dapat dinilai satu kali.'),
+          ('Rating & ulasan', 'Setelah perjalanan dan konfirmasi pembayaran selesai, beri 1–5 bintang dan ulasan untuk driver.'),
         ];
 
   Future<void> _newComplaint() async {
@@ -121,7 +121,7 @@ class _HelpScreenState extends State<HelpScreen> {
                   child: Column(children: [
                     InfoRow(Icons.attach_money_rounded, 'Tarif dasar', Fmt.rupiah((t['base_fare'] as num))),
                     InfoRow(Icons.speed_rounded, 'Tarif per km', Fmt.rupiah((t['per_km_rate'] as num))),
-                    const InfoRow(Icons.payments_rounded, 'Pembayaran', 'Tunai (Cash)'),
+                    const InfoRow(Icons.payments_rounded, 'Pembayaran', 'Tunai (Cash) & QRIS'),
                     const InfoRow(Icons.school_rounded, 'Area layanan', 'Lingkungan Polinela'),
                   ]),
                 ),

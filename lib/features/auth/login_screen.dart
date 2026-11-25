@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api.dart';
 import '../../core/auth_provider.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
@@ -29,6 +30,23 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) showError(context, e);
     }
+  }
+
+  void _showForgotPasswordSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ForgotPasswordSheet(
+        initialIdentifier: _id.text.trim(),
+        onResetSuccess: (identifier) {
+          setState(() {
+            _id.text = identifier;
+            _pw.clear();
+          });
+        },
+      ),
+    );
   }
 
   void _showServerDialog() {
@@ -276,7 +294,23 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               validator: (v) => (v == null || v.isEmpty) ? 'Password wajib diisi' : null,
                             ),
-                            const SizedBox(height: 22),
+                            const SizedBox(height: 6),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.primary,
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                onPressed: _showForgotPasswordSheet,
+                                child: const Text(
+                                  'Lupa Kata Sandi?',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
                             FilledButton.icon(
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size.fromHeight(52),
@@ -325,6 +359,341 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ForgotPasswordSheet extends StatefulWidget {
+  final String initialIdentifier;
+  final ValueChanged<String> onResetSuccess;
+
+  const _ForgotPasswordSheet({
+    required this.initialIdentifier,
+    required this.onResetSuccess,
+  });
+
+  @override
+  State<_ForgotPasswordSheet> createState() => _ForgotPasswordSheetState();
+}
+
+class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
+  final _form = GlobalKey<FormState>();
+  late final TextEditingController _idCtrl;
+  final _phoneCtrl = TextEditingController();
+  final _newPwCtrl = TextEditingController();
+  final _confirmPwCtrl = TextEditingController();
+
+  bool _verified = false;
+  bool _busy = false;
+  bool _obscure1 = true;
+  bool _obscure2 = true;
+  Map<String, dynamic>? _matchedUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _idCtrl = TextEditingController(text: widget.initialIdentifier);
+  }
+
+  @override
+  void dispose() {
+    _idCtrl.dispose();
+    _phoneCtrl.dispose();
+    _newPwCtrl.dispose();
+    _confirmPwCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verifyIdentity() async {
+    if (!_form.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _busy = true);
+    try {
+      final r = await Api.post('auth/forgot-password/verify', body: {
+        'identifier': _idCtrl.text.trim(),
+        'phone': _phoneCtrl.text.trim(),
+      });
+      if (!mounted) return;
+      setState(() {
+        _verified = true;
+        _matchedUser = r['user'] is Map<String, dynamic>
+            ? r['user'] as Map<String, dynamic>
+            : null;
+      });
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    if (!_form.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _busy = true);
+    try {
+      final r = await Api.post('auth/forgot-password/reset', body: {
+        'identifier': _idCtrl.text.trim(),
+        'phone': _phoneCtrl.text.trim(),
+        'new_password': _newPwCtrl.text,
+      });
+      if (!mounted) return;
+      final id = _idCtrl.text.trim();
+      Navigator.pop(context);
+      widget.onResetSuccess(id);
+      showMsg(context, r['_message'] ?? 'Kata sandi berhasil diperbarui!');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _roleName(String? role) => switch (role) {
+        'driver' => 'Driver',
+        'admin' => 'Admin',
+        'super_admin' => 'Super Admin',
+        _ => 'Customer',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
+            child: Form(
+              key: _form,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SheetHandle(),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryLight,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          _verified ? Icons.lock_reset_rounded : Icons.verified_user_rounded,
+                          color: AppColors.primary,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _verified ? 'Buat Kata Sandi Baru' : 'Lupa Kata Sandi',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.text,
+                              ),
+                            ),
+                            Text(
+                              _verified
+                                  ? 'Langkah 2 dari 2 • Atur ulang kata sandi Anda'
+                                  : 'Langkah 1 dari 2 • Verifikasi identitas akun',
+                              style: const TextStyle(fontSize: 12.5, color: AppColors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  if (!_verified) ...[
+                    const Text(
+                      'Masukkan Email atau NPM beserta Nomor HP yang terdaftar pada akun JEKPOL Anda untuk mereset kata sandi:',
+                      style: TextStyle(fontSize: 13, color: AppColors.grey, height: 1.4),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _idCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Email atau NPM Terdaftar',
+                        hintText: 'Contoh: budi@student.polinela.ac.id / 2215011001',
+                        prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Email atau NPM wajib diisi' : null,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _verifyIdentity(),
+                      decoration: InputDecoration(
+                        labelText: 'Nomor HP Terdaftar',
+                        hintText: 'Contoh: 0812xxxxxxxx',
+                        prefixIcon: const Icon(Icons.phone_android_rounded, color: AppColors.primary),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      validator: (v) =>
+                          (v == null || v.trim().length < 7) ? 'Masukkan nomor HP yang terdaftar' : null,
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: _busy ? null : _verifyIdentity,
+                      icon: _busy
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                            )
+                          : const Icon(Icons.arrow_forward_rounded),
+                      label: Text(
+                        _busy ? 'Memverifikasi...' : 'Verifikasi Akun',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                      ),
+                    ),
+                  ] else ...[
+                    if (_matchedUser != null)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryLight,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 26),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${_matchedUser!['name'] ?? 'Pengguna'} (${_roleName(_matchedUser!['role']?.toString())})',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14.5,
+                                      color: AppColors.primaryDark,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${_matchedUser!['email'] ?? ''}${_matchedUser!['npm'] != null ? ' • NPM: ${_matchedUser!['npm']}' : ''}',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.grey),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    TextFormField(
+                      controller: _newPwCtrl,
+                      obscureText: _obscure1,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: 'Kata Sandi Baru (min. 6 karakter)',
+                        prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.primary),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscure1 ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            color: AppColors.grey,
+                          ),
+                          onPressed: () => setState(() => _obscure1 = !_obscure1),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      validator: (v) =>
+                          (v == null || v.length < 6) ? 'Kata sandi baru minimal 6 karakter' : null,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _confirmPwCtrl,
+                      obscureText: _obscure2,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _resetPassword(),
+                      decoration: InputDecoration(
+                        labelText: 'Konfirmasi Kata Sandi Baru',
+                        prefixIcon: const Icon(Icons.lock_reset_rounded, color: AppColors.primary),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscure2 ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            color: AppColors.grey,
+                          ),
+                          onPressed: () => setState(() => _obscure2 = !_obscure2),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Konfirmasi kata sandi wajib diisi';
+                        if (v != _newPwCtrl.text) return 'Konfirmasi kata sandi tidak cocok';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(100, 50),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          onPressed: _busy ? null : () => setState(() => _verified = false),
+                          child: const Text('Kembali'),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            onPressed: _busy ? null : _resetPassword,
+                            icon: _busy
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                                  )
+                                : const Icon(Icons.check_circle_rounded),
+                            label: Text(
+                              _busy ? 'Menyimpan...' : 'Simpan Kata Sandi',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
